@@ -1,4 +1,4 @@
-'use client'
+  'use client'
 
 import { useChat } from '@ai-sdk/react'            // ✅ AI SDK v7: hooks live here
 import { type UIMessage, DefaultChatTransport } from 'ai'

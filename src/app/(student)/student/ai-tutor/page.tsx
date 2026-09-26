@@ -13,7 +13,7 @@ export default function AiTutorPage() {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 min-h-[600px] p-4 relative overflow-hidden flex flex-col">
-        <AiTutorChat />
+        <AiTutorChat variant="panel" />
       </div>
     </div>
   )
