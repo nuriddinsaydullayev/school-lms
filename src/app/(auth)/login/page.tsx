@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
@@ -15,11 +15,19 @@ import {
   Star,
   Trophy,
   Brain,
+  Building2,
+  ChevronDown,
 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────
 type AuthMode = 'login' | 'signup'
 type UserRole = 'student' | 'teacher'
+
+interface School {
+  id: string
+  name: string
+  subdomain: string
+}
 
 // ── Small feature-badge component ─────────────────────────────
 function FeatureBadge({
@@ -44,13 +52,37 @@ export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [mode, setMode]           = useState<AuthMode>('login')
-  const [role, setRole]           = useState<UserRole>('student')
-  const [email, setEmail]         = useState('')
-  const [password, setPassword]   = useState('')
-  const [fullName, setFullName]   = useState('')
+  const [mode, setMode]             = useState<AuthMode>('login')
+  const [role, setRole]             = useState<UserRole>('student')
+  const [email, setEmail]           = useState('')
+  const [password, setPassword]     = useState('')
+  const [fullName, setFullName]     = useState('')
+  const [schoolId, setSchoolId]     = useState('')
+  const [schools, setSchools]       = useState<School[]>([])
+  const [schoolsLoading, setSchoolsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading]     = useState(false)
+  const [loading, setLoading]       = useState(false)
+
+  // ── Fetch schools when user switches to sign-up mode ──────────
+  useEffect(() => {
+    if (mode !== 'signup') return
+    setSchoolsLoading(true)
+    supabase
+      .from('schools')
+      .select('id, name, subdomain')
+      .order('name')
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setSchools(data)
+          // Pre-select first school if available
+          if (data.length > 0 && !schoolId) {
+            setSchoolId(data[0].id)
+          }
+        }
+        setSchoolsLoading(false)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
 
   // ── Handlers ──────────────────────────────────────────────────
 
@@ -83,11 +115,13 @@ export default function LoginPage() {
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
 
-    // Example hardcoded default school for development.
-    // In production, derive this from the subdomain (e.g. stanford.eduspark.app) or a dropdown.
-    const currentSchoolId = '123e4567-e89b-12d3-a456-426614174000'
+    if (!schoolId) {
+      toast.error('Please select a school to continue.')
+      return
+    }
+
+    setLoading(true)
 
     const { error } = await supabase.auth.signUp({
       email,
@@ -96,7 +130,7 @@ export default function LoginPage() {
         data: {
           full_name: fullName,
           role,
-          school_id: currentSchoolId,
+          school_id: schoolId,
         },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
@@ -137,7 +171,7 @@ export default function LoginPage() {
           <h1 className="text-4xl font-bold text-white leading-tight">
             Learning reimagined
             <br />
-            <span className="text-indigo-200">with AI & play.</span>
+            <span className="text-indigo-200">with AI &amp; play.</span>
           </h1>
           <p className="text-indigo-200 text-lg leading-relaxed max-w-sm">
             Earn XP, collect tokens, get instant AI help, and track your progress — all in one place.
@@ -223,6 +257,49 @@ export default function LoginPage() {
               </div>
             )}
 
+            {/* ── Sign-up only: School selector ── */}
+            {mode === 'signup' && (
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-slate-700" htmlFor="school">
+                  School
+                </label>
+                {schoolsLoading ? (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-400 text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading schools...
+                  </div>
+                ) : schools.length === 0 ? (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-sm">
+                    <Building2 className="w-4 h-4 flex-shrink-0" />
+                    No schools found. Ask your admin to create one first.
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+                      <Building2 className="w-4 h-4 text-slate-400" />
+                    </div>
+                    <select
+                      id="school"
+                      required
+                      value={schoolId}
+                      onChange={(e) => setSchoolId(e.target.value)}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition appearance-none"
+                    >
+                      <option value="" disabled>Select your school…</option>
+                      {schools.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center">
+                      <ChevronDown className="w-4 h-4 text-slate-400" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── Sign-up only: Role selector ── */}
             {mode === 'signup' && (
               <div className="space-y-1.5">
@@ -245,7 +322,7 @@ export default function LoginPage() {
                     </div>
                     <div className="text-left">
                       <p className="font-semibold text-sm">Student</p>
-                      <p className="text-xs opacity-70">Learn & earn</p>
+                      <p className="text-xs opacity-70">Learn &amp; earn</p>
                     </div>
                   </button>
 
@@ -264,7 +341,7 @@ export default function LoginPage() {
                     </div>
                     <div className="text-left">
                       <p className="font-semibold text-sm">Teacher</p>
-                      <p className="text-xs opacity-70">Teach & manage</p>
+                      <p className="text-xs opacity-70">Teach &amp; manage</p>
                     </div>
                   </button>
                 </div>
@@ -329,7 +406,7 @@ export default function LoginPage() {
             {/* Submit */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (mode === 'signup' && (schoolsLoading || schools.length === 0))}
               className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed shadow-md shadow-indigo-200 hover:shadow-lg hover:shadow-indigo-200"
             >
               {loading ? (
