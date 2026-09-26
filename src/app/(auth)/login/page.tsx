@@ -85,6 +85,10 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
 
+    // Example hardcoded default school for development.
+    // In production, derive this from the subdomain (e.g. stanford.eduspark.app) or a dropdown.
+    const currentSchoolId = '123e4567-e89b-12d3-a456-426614174000'
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -92,6 +96,7 @@ export default function LoginPage() {
         data: {
           full_name: fullName,
           role,
+          school_id: currentSchoolId,
         },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },

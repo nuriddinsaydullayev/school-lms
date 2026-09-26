@@ -30,10 +30,10 @@ export type TokenType       = 'earned'  | 'spent'    | 'bonus'
 // ─────────────────────────────────────────────────────────────────────────────
 export interface Database {
   public: {
-    Tables: {
+    Tables: { schools: { Row: { school_id: string | null; id: string; name: string; subdomain: string; created_at: string }; Insert: { school_id?: string | null; id?: string; name: string; subdomain: string; created_at?: string }; Update: { school_id?: string | null; name?: string; subdomain?: string }; Relationships: [] };
       // ── profiles ─────────────────────────────────────────────
       profiles: {
-        Row: {
+        Row: { school_id: string | null;
           id:          string
           role:        UserRole
           full_name:   string
@@ -44,7 +44,7 @@ export interface Database {
           created_at:  string
           updated_at:  string
         }
-        Insert: {
+        Insert: { school_id?: string | null;
           id:          string
           role?:       UserRole
           full_name:   string
@@ -55,7 +55,7 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
-        Update: {
+        Update: { school_id?: string | null;
           id?:         string
           role?:       UserRole
           full_name?:  string
@@ -71,7 +71,7 @@ export interface Database {
 
       // ── classes ───────────────────────────────────────────────
       classes: {
-        Row: {
+        Row: { school_id: string | null;
           id:          string
           teacher_id:  string
           name:        string
@@ -82,7 +82,7 @@ export interface Database {
           created_at:  string
           updated_at:  string
         }
-        Insert: {
+        Insert: { school_id?: string | null;
           id?:          string
           teacher_id:   string
           name:         string
@@ -93,7 +93,7 @@ export interface Database {
           created_at?:  string
           updated_at?:  string
         }
-        Update: {
+        Update: { school_id?: string | null;
           id?:          string
           teacher_id?:  string
           name?:        string
@@ -109,19 +109,19 @@ export interface Database {
 
       // ── class_enrollments ─────────────────────────────────────
       class_enrollments: {
-        Row: {
+        Row: { school_id: string | null;
           id:          string
           class_id:    string
           student_id:  string
           enrolled_at: string
         }
-        Insert: {
+        Insert: { school_id?: string | null;
           id?:          string
           class_id:     string
           student_id:   string
           enrolled_at?: string
         }
-        Update: {
+        Update: { school_id?: string | null;
           id?:          string
           class_id?:    string
           student_id?:  string
@@ -132,7 +132,7 @@ export interface Database {
 
       // ── assignments ───────────────────────────────────────────
       assignments: {
-        Row: {
+        Row: { school_id: string | null;
           id:               string
           class_id:         string
           teacher_id:       string
@@ -147,7 +147,7 @@ export interface Database {
           created_at:       string
           updated_at:       string
         }
-        Insert: {
+        Insert: { school_id?: string | null;
           id?:               string
           class_id:          string
           teacher_id:        string
@@ -162,7 +162,7 @@ export interface Database {
           created_at?:       string
           updated_at?:       string
         }
-        Update: {
+        Update: { school_id?: string | null;
           id?:               string
           class_id?:         string
           teacher_id?:       string
@@ -190,7 +190,7 @@ export interface Database {
 
       // ── submissions ───────────────────────────────────────────
       submissions: {
-        Row: {
+        Row: { school_id: string | null;
           id:            string
           assignment_id: string
           student_id:    string
@@ -205,7 +205,7 @@ export interface Database {
           created_at:    string
           updated_at:    string
         }
-        Insert: {
+        Insert: { school_id?: string | null;
           id?:            string
           assignment_id:  string
           student_id:     string
@@ -220,7 +220,7 @@ export interface Database {
           created_at?:    string
           updated_at?:    string
         }
-        Update: {
+        Update: { school_id?: string | null;
           id?:            string
           assignment_id?: string
           student_id?:    string
@@ -240,7 +240,7 @@ export interface Database {
 
       // ── tokens ────────────────────────────────────────────────
       tokens: {
-        Row: {
+        Row: { school_id: string | null;
           id:           string
           student_id:   string
           type:         TokenType
@@ -249,7 +249,7 @@ export interface Database {
           reference_id: string | null
           created_at:   string
         }
-        Insert: {
+        Insert: { school_id?: string | null;
           id?:           string
           student_id:    string
           type:          TokenType
@@ -258,7 +258,7 @@ export interface Database {
           reference_id?: string | null
           created_at?:   string
         }
-        Update: {
+        Update: { school_id?: string | null;
           id?:           string
           student_id?:   string
           type?:         TokenType
@@ -272,7 +272,7 @@ export interface Database {
 
       // ── ai_tutor_logs ─────────────────────────────────────────
       ai_tutor_logs: {
-        Row: {
+        Row: { school_id: string | null;
           id:            string
           student_id:    string
           assignment_id: string | null
@@ -282,7 +282,7 @@ export interface Database {
           tokens_used:   number | null
           created_at:    string
         }
-        Insert: {
+        Insert: { school_id?: string | null;
           id?:            string
           student_id:     string
           assignment_id?: string | null
@@ -292,7 +292,7 @@ export interface Database {
           tokens_used?:   number | null
           created_at?:    string
         }
-        Update: {
+        Update: { school_id?: string | null;
           id?:            string
           student_id?:    string
           assignment_id?: string | null
@@ -309,7 +309,7 @@ export interface Database {
     // ── Views ────────────────────────────────────────────────
     Views: {
       token_balances: {
-        Row: {
+        Row: { school_id: string | null;
           student_id:   string | null
           balance:      number | null
           total_earned: number | null
