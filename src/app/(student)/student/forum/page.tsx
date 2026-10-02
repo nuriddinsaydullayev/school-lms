@@ -13,7 +13,7 @@ import {
   ChevronDown,
   Loader2,
   BookOpen,
-  Send,
+  Send, 
   User,
   Flame,
 } from 'lucide-react'
