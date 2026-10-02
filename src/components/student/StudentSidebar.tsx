@@ -13,21 +13,23 @@ import {
   LogOut,
   X,
   Building2,
+  CalendarDays,
+  Medal,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
-  { href: '/student/dashboard',    label: 'Dashboard',   icon: LayoutDashboard },
-  { href: '/student/classes',      label: 'My Classes',  icon: BookOpen        },
-  { href: '/student/assignments',  label: 'Assignments', icon: ClipboardList   },
-  { href: '/student/ai-tutor',     label: 'AI Tutor',    icon: Brain           },
-  { href: '/student/leaderboard',  label: 'Leaderboard', icon: Trophy          },
-  { href: '/student/rewards',      label: 'Rewards',     icon: Gift            },
+  { href: '/student/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
+  { href: '/student/classes',     label: 'My Classes',  icon: BookOpen        },
+  { href: '/student/assignments', label: 'Assignments', icon: ClipboardList   },
+  { href: '/student/planner',     label: 'Planner',     icon: CalendarDays    },
+  { href: '/student/ai-tutor',    label: 'AI Tutor',    icon: Brain           },
+  { href: '/student/leaderboard', label: 'Leaderboard', icon: Trophy          },
+  { href: '/student/badges',      label: 'Badges',      icon: Medal           },
+  { href: '/student/rewards',     label: 'Rewards',     icon: Gift            },
 ]
 
 interface StudentSidebarProps {
-  /** The school name to display in the header branding area */
   schoolName?: string
-  /** Pass true to render as a mobile drawer overlay */
   mobile?: boolean
   onClose?: () => void
 }
