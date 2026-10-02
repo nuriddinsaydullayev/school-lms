@@ -15,6 +15,7 @@ import {
   Building2,
   CalendarDays,
   Medal,
+  MessageCircle,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { href: '/student/classes',     label: 'My Classes',  icon: BookOpen        },
   { href: '/student/assignments', label: 'Assignments', icon: ClipboardList   },
   { href: '/student/planner',     label: 'Planner',     icon: CalendarDays    },
+  { href: '/student/forum',       label: 'Forum',       icon: MessageCircle   },
   { href: '/student/ai-tutor',    label: 'AI Tutor',    icon: Brain           },
   { href: '/student/leaderboard', label: 'Leaderboard', icon: Trophy          },
   { href: '/student/badges',      label: 'Badges',      icon: Medal           },
