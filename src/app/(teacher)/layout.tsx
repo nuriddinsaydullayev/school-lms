@@ -1,54 +1,33 @@
-'use client'
+import { createClient } from '@/utils/supabase/server'
+import TeacherLayoutClient from '@/components/teacher/TeacherLayoutClient'
 
-import { useState } from 'react'
-import { Menu } from 'lucide-react'
-import TeacherSidebar from '@/components/teacher/TeacherSidebar'
+/**
+ * Server Component layout wrapping all /teacher/** routes.
+ * Fetches the school name once per navigation so both sidebars
+ * and the mobile top bar show the correct tenant branding.
+ */
+export default async function TeacherLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient()
 
-export default function TeacherLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const { data: { user } } = await supabase.auth.getUser()
+
+  let schoolName = 'EduSpark'
+
+  if (user) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('schools(name)')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (data?.schools && !Array.isArray(data.schools)) {
+      schoolName = (data.schools as unknown as { name: string }).name
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      {/* Desktop Sidebar */}
-      <div className="hidden md:flex w-64 flex-col fixed inset-y-0 z-50">
-        <TeacherSidebar />
-      </div>
-
-      {/* Mobile Drawer */}
-      {drawerOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
-          <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setDrawerOpen(false)}
-          />
-          <div className="relative flex w-full max-w-xs flex-1 animate-in slide-in-from-left duration-200">
-            <TeacherSidebar mobile onClose={() => setDrawerOpen(false)} />
-          </div>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col md:pl-64">
-        {/* Mobile Top Bar */}
-        <div className="md:hidden sticky top-0 z-40 flex items-center h-16 px-4 bg-slate-900 border-b border-slate-800">
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="p-2 -ml-2 text-slate-300 hover:text-white"
-          >
-            <Menu size={24} />
-          </button>
-          <span className="ml-2 font-bold text-white tracking-tight">EduSpark</span>
-        </div>
-
-        {/* Page Content */}
-        <main className="flex-1 overflow-x-hidden">
-          {children}
-        </main>
-      </div>
-    </div>
+    <TeacherLayoutClient schoolName={schoolName}>
+      {children}
+    </TeacherLayoutClient>
   )
 }

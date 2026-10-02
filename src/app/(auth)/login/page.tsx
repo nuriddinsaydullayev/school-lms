@@ -58,6 +58,7 @@ export default function LoginPage() {
   const [password, setPassword]     = useState('')
   const [fullName, setFullName]     = useState('')
   const [schoolId, setSchoolId]     = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [schools, setSchools]       = useState<School[]>([])
   const [schoolsLoading, setSchoolsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -120,9 +121,33 @@ export default function LoginPage() {
       toast.error('Please select a school to continue.')
       return
     }
+    if (!inviteCode.trim()) {
+      toast.error('Please enter the invite code given by your school.')
+      return
+    }
 
     setLoading(true)
 
+    // ── Validate invite code against the DB before touching Auth ──
+    const { data: school, error: schoolError } = await supabase
+      .from('schools')
+      .select('id, invite_code')
+      .eq('id', schoolId)
+      .maybeSingle()
+
+    if (schoolError || !school) {
+      toast.error('Could not verify school. Please try again.')
+      setLoading(false)
+      return
+    }
+
+    if (school.invite_code.toUpperCase() !== inviteCode.trim().toUpperCase()) {
+      toast.error('Invalid invite code. Please check with your school administrator.')
+      setLoading(false)
+      return
+    }
+
+    // ── Invite code is valid — proceed with sign-up ───────────────
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -297,6 +322,26 @@ export default function LoginPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Sign-up only: Invite Code ── */}
+            {mode === 'signup' && (
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-slate-700" htmlFor="inviteCode">
+                  Invite Code
+                </label>
+                <input
+                  id="inviteCode"
+                  type="text"
+                  required
+                  placeholder="e.g. SPARK2025"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                  maxLength={12}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 font-mono placeholder-slate-400 tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                />
+                <p className="text-xs text-slate-400">Ask your school administrator for the invite code.</p>
               </div>
             )}
 

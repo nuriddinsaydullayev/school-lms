@@ -8,6 +8,7 @@ type Profile = Database['public']['Tables']['profiles']['Row']
 interface WelcomeHeaderProps {
   profile: Pick<Profile, 'full_name' | 'level' | 'xp_points'>
   pendingCount: number
+  schoolName?: string
 }
 
 // XP needed to reach the next level (simple linear formula: level × 100)
@@ -32,7 +33,7 @@ function XpBar({ current, max }: { current: number; max: number }) {
   )
 }
 
-export default function WelcomeHeader({ profile, pendingCount }: WelcomeHeaderProps) {
+export default function WelcomeHeader({ profile, pendingCount, schoolName }: WelcomeHeaderProps) {
   const today = new Date()
   const greeting = (() => {
     const h = today.getHours()
@@ -64,6 +65,11 @@ export default function WelcomeHeader({ profile, pendingCount }: WelcomeHeaderPr
           <p className="text-indigo-200 text-sm font-medium">
             {format(today, 'EEEE, d MMMM yyyy')}
           </p>
+          {schoolName && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider bg-white/15 text-indigo-100 px-2 py-0.5 rounded-full">
+              🏫 {schoolName}
+            </span>
+          )}
           <h1 className="text-2xl font-bold">
             {greeting}, {firstName}! 👋
           </h1>

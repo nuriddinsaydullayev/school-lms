@@ -33,10 +33,10 @@ export default async function StudentDashboardPage() {
     allBalancesResult,
     assignments,
   ] = await Promise.all([
-    // 1. Student profile
+    // 1. Student profile + school name
     supabase
       .from('profiles')
-      .select('full_name, level, xp_points, role')
+      .select('full_name, level, xp_points, role, schools(name)')
       .eq('id', user.id)
       .maybeSingle(),
 
@@ -75,6 +75,12 @@ export default async function StudentDashboardPage() {
   const recentTokens     = recentTokensResult.data ?? []
   const allBalances      = allBalancesResult.data  ?? []
 
+  // ── Extract school name from join ────────────────────────────
+  const schoolData = profile.schools
+  const schoolName = schoolData && !Array.isArray(schoolData)
+    ? (schoolData as unknown as { name: string }).name
+    : undefined
+
   // ── Rank calculation ─────────────────────────────────────────
   // Sort by balance descending (already ordered), find this student's position
   const rankIndex   = allBalances.findIndex((b) => b.student_id === user.id)
@@ -83,8 +89,9 @@ export default async function StudentDashboardPage() {
 
   // ── Default balance if no tokens yet ────────────────────────
   const safeBalance = tokenBalance ?? {
-    student_id: user.id,
-    balance:     0,
+    student_id:   user.id,
+    school_id:    null,
+    balance:      0,
     total_earned: 0,
     total_spent:  0,
   }
@@ -96,6 +103,7 @@ export default async function StudentDashboardPage() {
       <WelcomeHeader
         profile={profile}
         pendingCount={assignments.length}
+        schoolName={schoolName}
       />
 
       {/* ── Main grid ── */}

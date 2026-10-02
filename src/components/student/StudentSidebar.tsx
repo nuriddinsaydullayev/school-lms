@@ -10,9 +10,9 @@ import {
   Brain,
   Trophy,
   Gift,
-  Sparkles,
   LogOut,
   X,
+  Building2,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -25,12 +25,14 @@ const NAV_ITEMS = [
 ]
 
 interface StudentSidebarProps {
+  /** The school name to display in the header branding area */
+  schoolName?: string
   /** Pass true to render as a mobile drawer overlay */
   mobile?: boolean
   onClose?: () => void
 }
 
-export default function StudentSidebar({ mobile, onClose }: StudentSidebarProps) {
+export default function StudentSidebar({ schoolName, mobile, onClose }: StudentSidebarProps) {
   const pathname = usePathname()
   const router   = useRouter()
   const supabase = createClient()
@@ -47,18 +49,25 @@ export default function StudentSidebar({ mobile, onClose }: StudentSidebarProps)
         mobile ? 'w-72' : 'w-64'
       }`}
     >
-      {/* ── Logo ── */}
+      {/* ── School Branding ── */}
       <div className="flex items-center justify-between px-5 py-5 border-b border-slate-100">
-        <Link href="/student/dashboard" className="flex items-center gap-2.5">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-600">
-            <Sparkles className="w-5 h-5 text-white" />
+        <Link href="/student/dashboard" className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-600 flex-shrink-0">
+            <Building2 className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-lg text-slate-800 tracking-tight">EduSpark</span>
+          <div className="min-w-0">
+            <span className="block font-bold text-sm text-slate-800 tracking-tight truncate leading-tight">
+              {schoolName ?? 'EduSpark'}
+            </span>
+            <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider leading-tight">
+              Student Portal
+            </span>
+          </div>
         </Link>
         {mobile && (
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition ml-2 flex-shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -81,9 +90,7 @@ export default function StudentSidebar({ mobile, onClose }: StudentSidebarProps)
               }`}
             >
               <Icon
-                className={`w-4.5 h-4.5 flex-shrink-0 ${
-                  isActive ? 'text-indigo-600' : 'text-slate-400'
-                }`}
+                className={`flex-shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}
                 size={18}
               />
               {label}
@@ -95,7 +102,7 @@ export default function StudentSidebar({ mobile, onClose }: StudentSidebarProps)
         })}
       </nav>
 
-      {/* ── User / Sign-out ── */}
+      {/* ── Sign-out ── */}
       <div className="px-3 pb-5 pt-2 border-t border-slate-100">
         <button
           onClick={handleSignOut}

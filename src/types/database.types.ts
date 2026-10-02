@@ -30,7 +30,7 @@ export type TokenType       = 'earned'  | 'spent'    | 'bonus'
 // ─────────────────────────────────────────────────────────────────────────────
 export interface Database {
   public: {
-    Tables: { schools: { Row: { school_id: string | null; id: string; name: string; subdomain: string; created_at: string }; Insert: { school_id?: string | null; id?: string; name: string; subdomain: string; created_at?: string }; Update: { school_id?: string | null; name?: string; subdomain?: string }; Relationships: [] };
+    Tables: { schools: { Row: { id: string; name: string; subdomain: string; invite_code: string; created_at: string }; Insert: { id?: string; name: string; subdomain: string; invite_code?: string; created_at?: string }; Update: { name?: string; subdomain?: string; invite_code?: string }; Relationships: [] };
       // ── profiles ─────────────────────────────────────────────
       profiles: {
         Row: { school_id: string | null;

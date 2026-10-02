@@ -13,10 +13,12 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import { Building2 } from 'lucide-react'
 
 interface TeacherSidebarProps {
   mobile?: boolean
   onClose?: () => void
+  schoolName?: string
 }
 
 const navItems = [
@@ -26,7 +28,7 @@ const navItems = [
   { name: 'Settings', href: '/teacher/settings', icon: Settings },
 ]
 
-export default function TeacherSidebar({ mobile, onClose }: TeacherSidebarProps) {
+export default function TeacherSidebar({ mobile, onClose, schoolName }: TeacherSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
@@ -42,11 +44,17 @@ export default function TeacherSidebar({ mobile, onClose }: TeacherSidebarProps)
       {/* Brand */}
       <div className="flex items-center justify-between h-16 px-6 bg-slate-950 flex-shrink-0">
         <div className="flex items-center gap-2 text-white">
-          <div className="flex items-center justify-center w-8 h-8 bg-violet-600 rounded-lg">
-            <Sparkles className="w-4 h-4" />
+          <div className="flex items-center justify-center w-8 h-8 bg-violet-600 rounded-lg flex-shrink-0">
+            <Building2 className="w-4 h-4" />
           </div>
-          <span className="font-bold tracking-tight">EduSpark</span>
-          <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full ml-2">Teacher</span>
+          <div className="min-w-0">
+            <span className="block font-bold tracking-tight text-sm text-white truncate">
+              {schoolName ?? 'EduSpark'}
+            </span>
+            <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider leading-tight">
+              Teacher Portal
+            </span>
+          </div>
         </div>
         {mobile && (
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-white">
