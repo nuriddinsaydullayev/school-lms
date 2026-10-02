@@ -1,4 +1,17 @@
-import { Brain, Clock, Zap, ChevronRight, Lightbulb } from 'lucide-react'
+'use client'
+
+import { useState } from 'react'
+import {
+  Brain,
+  Clock,
+  Zap,
+  ChevronRight,
+  Lightbulb,
+  X,
+  Sliders,
+  Check,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
 import type { Database } from '@/types/database.types'
 
 type AssignmentRow = Database['public']['Tables']['assignments']['Row'] & {
@@ -32,112 +45,231 @@ const SLOT_COLORS = [
   'from-violet-500 to-purple-500',
 ]
 
-const FREE_TIME_SLOTS = ['4:00 PM – 5:30 PM', '6:30 PM – 8:00 PM', '8:30 PM – 9:30 PM']
+const DEFAULT_SLOTS = [
+  { id: 's1', label: 'Slot 1 (Early Evening)', start: '16:00', end: '17:30', title: '4:00 PM – 5:30 PM' },
+  { id: 's2', label: 'Slot 2 (Prime Focus)',   start: '18:30', end: '20:00', title: '6:30 PM – 8:00 PM' },
+  { id: 's3', label: 'Slot 3 (Night Review)',  start: '20:30', end: '21:30', title: '8:30 PM – 9:30 PM' },
+]
 
 export default function SmartPlanner({ assignments, xpPoints }: SmartPlannerProps) {
-  // Sort by priority, take top 3 pending tasks
+  const [slots, setSlots] = useState(DEFAULT_SLOTS)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [tempSlots, setTempSlots] = useState(DEFAULT_SLOTS)
+
+  // Sort by priority, take top pending tasks
   const sorted = [...assignments]
     .sort((a, b) => priorityScore(a) - priorityScore(b))
-    .slice(0, 3)
+    .slice(0, slots.length)
 
   const totalMins = sorted.reduce((s, a) => s + estimateMins(a), 0)
   const totalHrs  = Math.floor(totalMins / 60)
   const totalRem  = totalMins % 60
 
   // Assign tasks to free-time slots
-  const plan = FREE_TIME_SLOTS.map((slot, i) => ({
-    slot,
+  const plan = slots.map((slotObj, i) => ({
+    slot: slotObj.title,
     task: sorted[i] ?? null,
     gradient: SLOT_COLORS[i % SLOT_COLORS.length],
   }))
 
+  function handleOpenModal() {
+    setTempSlots([...slots])
+    setIsModalOpen(true)
+  }
+
+  function handleSaveModal(e: React.FormEvent) {
+    e.preventDefault()
+    setSlots([...tempSlots])
+    setIsModalOpen(false)
+    toast.success('Study plan updated! Slots adjusted for your schedule.')
+  }
+
   return (
-    <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl overflow-hidden shadow-sm border border-slate-700/50">
-      {/* Header */}
-      <div className="px-5 pt-5 pb-4 flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30">
-            <Brain className="w-5 h-5 text-indigo-400" />
-          </div>
-          <div>
-            <h2 className="font-bold text-white text-sm leading-tight">Aqlli Rejalashtiruvchi</h2>
-            <p className="text-xs text-slate-400 mt-0.5">AI-suggested daily plan</p>
-          </div>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-slate-500">Study time needed</p>
-          <p className="text-sm font-bold text-indigo-400 tabular-nums">
-            {totalHrs > 0 ? `${totalHrs}h ` : ''}{totalRem > 0 ? `${totalRem}m` : ''}
-            {totalMins === 0 ? 'All done!' : ''}
-          </p>
-        </div>
-      </div>
+    <>
+      {/* ── Customise Plan Modal ── */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600">
+                  <Sliders size={16} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Customise Study Hours</h3>
+                  <p className="text-xs text-slate-500">Set your preferred after-school free time slots</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
-      {/* AI Tip banner */}
-      <div className="mx-4 mb-4 flex items-start gap-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-3">
-        <Lightbulb className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-slate-300 leading-relaxed">
-          {assignments.length === 0
-            ? "You're all caught up! Use your free time to review past notes or explore the Rewards store. 🎉"
-            : xpPoints < 100
-            ? "You're just starting out! Tackle smaller tasks first to build momentum and earn your first XP."
-            : "Great progress! Prioritise the tasks due soonest and take a 10-min break every 45 minutes for best results."}
-        </p>
-      </div>
-
-      {/* Schedule slots */}
-      <div className="px-4 pb-5 space-y-2.5">
-        {plan.map(({ slot, task, gradient }, i) => (
-          <div
-            key={i}
-            className={`rounded-xl overflow-hidden ${task ? '' : 'opacity-40'}`}
-          >
-            {task ? (
-              <div className={`bg-gradient-to-r ${gradient} p-px rounded-xl`}>
-                <div className="bg-slate-800 rounded-[11px] px-3.5 py-2.5 flex items-center gap-3">
-                  <div className="flex-shrink-0 text-center">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <p className="text-[10px] text-slate-400 leading-tight mt-0.5 whitespace-nowrap">
-                      {slot.split(' – ')[0]}
-                    </p>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{task.title}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-slate-400">{task.classes?.name ?? 'Assignment'}</span>
-                      <span className="text-[10px] text-slate-500">·</span>
-                      <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
-                        <Zap className="w-2.5 h-2.5 text-yellow-400" />
-                        {estimateMins(task)} min
-                      </span>
+            <form onSubmit={handleSaveModal} className="px-6 py-5 space-y-4">
+              {tempSlots.map((slot, index) => (
+                <div key={slot.id} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                  <span className="text-xs font-semibold text-slate-700">{slot.label}</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block mb-1">
+                        Start Time
+                      </label>
+                      <input
+                        type="time"
+                        value={slot.start}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setTempSlots((prev) =>
+                            prev.map((s, idx) =>
+                              idx === index
+                                ? { ...s, start: val, title: `${val} – ${s.end}` }
+                                : s
+                            )
+                          )
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block mb-1">
+                        End Time
+                      </label>
+                      <input
+                        type="time"
+                        value={slot.end}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setTempSlots((prev) =>
+                            prev.map((s, idx) =>
+                              idx === index
+                                ? { ...s, end: val, title: `${s.start} – ${val}` }
+                                : s
+                            )
+                          )
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
                     </div>
                   </div>
-                  <div className={`text-[10px] font-bold bg-gradient-to-r ${gradient} bg-clip-text text-transparent`}>
-                    +{task.xp_reward} XP
+                </div>
+              ))}
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition shadow-md shadow-indigo-200"
+                >
+                  <Check size={16} />
+                  Save Plan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Main Planner Card ── */}
+      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl overflow-hidden shadow-sm border border-slate-700/50">
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30">
+              <Brain className="w-5 h-5 text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-white text-sm leading-tight">Aqlli Rejalashtiruvchi</h2>
+              <p className="text-xs text-slate-400 mt-0.5">AI-suggested daily plan</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-slate-500">Study time needed</p>
+            <p className="text-sm font-bold text-indigo-400 tabular-nums">
+              {totalHrs > 0 ? `${totalHrs}h ` : ''}{totalRem > 0 ? `${totalRem}m` : ''}
+              {totalMins === 0 ? 'All done!' : ''}
+            </p>
+          </div>
+        </div>
+
+        {/* AI Tip banner */}
+        <div className="mx-4 mb-4 flex items-start gap-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-3">
+          <Lightbulb className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-slate-300 leading-relaxed">
+            {assignments.length === 0
+              ? "You're all caught up! Use your free time to review past notes or explore the Rewards store. 🎉"
+              : xpPoints < 100
+              ? "You're just starting out! Tackle smaller tasks first to build momentum and earn your first XP."
+              : "Great progress! Prioritise the tasks due soonest and take a 10-min break every 45 minutes for best results."}
+          </p>
+        </div>
+
+        {/* Schedule slots */}
+        <div className="px-4 pb-5 space-y-2.5">
+          {plan.map(({ slot, task, gradient }, i) => (
+            <div
+              key={i}
+              className={`rounded-xl overflow-hidden ${task ? '' : 'opacity-40'}`}
+            >
+              {task ? (
+                <div className={`bg-gradient-to-r ${gradient} p-px rounded-xl`}>
+                  <div className="bg-slate-800 rounded-[11px] px-3.5 py-2.5 flex items-center gap-3">
+                    <div className="flex-shrink-0 text-center">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <p className="text-[10px] text-slate-400 leading-tight mt-0.5 whitespace-nowrap">
+                        {slot.split(' – ')[0]}
+                      </p>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{task.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-slate-400">{task.classes?.name ?? 'Assignment'}</span>
+                        <span className="text-[10px] text-slate-500">·</span>
+                        <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                          <Zap className="w-2.5 h-2.5 text-yellow-400" />
+                          {estimateMins(task)} min
+                        </span>
+                      </div>
+                    </div>
+                    <div className={`text-[10px] font-bold bg-gradient-to-r ${gradient} bg-clip-text text-transparent`}>
+                      +{task.xp_reward} XP
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="bg-slate-700/30 border border-slate-600/30 rounded-xl px-3.5 py-2.5 flex items-center gap-3">
-                <Clock className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-xs text-slate-500">{slot}</p>
-                  <p className="text-[10px] text-slate-600 mt-0.5">Free slot — review or relax 🎯</p>
+              ) : (
+                <div className="bg-slate-700/30 border border-slate-600/30 rounded-xl px-3.5 py-2.5 flex items-center gap-3">
+                  <Clock className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500">{slot}</p>
+                    <p className="text-[10px] text-slate-600 mt-0.5">Free slot — review or relax 🎯</p>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+              )}
+            </div>
+          ))}
+        </div>
 
-      {/* Footer CTA */}
-      <div className="border-t border-slate-700/50 px-5 py-3 flex items-center justify-between">
-        <p className="text-xs text-slate-500">Powered by EduSpark AI</p>
-        <button className="flex items-center gap-1 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition">
-          Customise plan
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
+        {/* Footer CTA */}
+        <div className="border-t border-slate-700/50 px-5 py-3 flex items-center justify-between">
+          <p className="text-xs text-slate-500">Powered by EduSpark AI</p>
+          <button
+            type="button"
+            onClick={handleOpenModal}
+            className="flex items-center gap-1 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition"
+          >
+            Customise plan
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

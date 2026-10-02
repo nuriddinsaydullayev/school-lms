@@ -1,8 +1,13 @@
-  'use client'
+'use client'
 
-import { useChat } from '@ai-sdk/react'            // ✅ AI SDK v7: hooks live here
+import { useChat } from '@ai-sdk/react'
 import { type UIMessage, DefaultChatTransport } from 'ai'
 import { useRef, useEffect, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
+import toast from 'react-hot-toast'
 import {
   Brain,
   Send,
@@ -12,6 +17,8 @@ import {
   Sparkles,
   User,
   RotateCcw,
+  Mic,
+  MicOff,
 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────
@@ -26,7 +33,6 @@ interface AiTutorChatProps {
 
 // ── Helpers: extract plain text from a UIMessage ──────────────
 function getMessageText(message: UIMessage): string {
-  // AI SDK v7: content is an array of parts
   if (Array.isArray(message.parts)) {
     return message.parts
       .filter((p) => p.type === 'text')
@@ -57,13 +63,43 @@ function MessageBubble({ message }: { message: UIMessage }) {
 
       {/* Bubble */}
       <div
-        className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+        className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
           isUser
-            ? 'bg-indigo-600 text-white rounded-tr-sm'
+            ? 'bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap'
             : 'bg-slate-100 text-slate-800 rounded-tl-sm'
         }`}
       >
-        {text}
+        {isUser ? (
+          text
+        ) : (
+          <div className="prose prose-sm max-w-none text-slate-800 break-words">
+            <ReactMarkdown
+              remarkPlugins={[remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={{
+                p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+                ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                code: ({ className, children, ...props }) => {
+                  const isInline = !className
+                  return isInline ? (
+                    <code className="bg-slate-200/80 text-slate-900 rounded px-1.5 py-0.5 text-xs font-mono" {...props}>
+                      {children}
+                    </code>
+                  ) : (
+                    <code className="block bg-slate-900 text-slate-100 rounded-lg p-2.5 my-2 text-xs font-mono overflow-x-auto" {...props}>
+                      {children}
+                    </code>
+                  )
+                },
+                strong: ({ children }) => <strong className="font-semibold text-slate-900">{children}</strong>,
+              }}
+            >
+              {text}
+            </ReactMarkdown>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -114,16 +150,13 @@ export default function AiTutorChat({
 }: AiTutorChatProps) {
   const [isOpen, setIsOpen] = useState(variant === 'panel')
   const [inputText, setInputText] = useState('')
+  const [isListening, setIsListening] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef       = useRef<HTMLTextAreaElement>(null)
+  const recognitionRef = useRef<any>(null)
 
   // ── AI SDK v7 useChat ─────────────────────────────────────
-  // Key API changes from v3/v4:
-  //  - No `input` / `handleInputChange` / `handleSubmit` props
-  //  - Use `sendMessage({ text })` instead
-  //  - `status` replaces `isLoading` ('ready' | 'submitted' | 'streaming' | 'error')
   const { messages, sendMessage, status, setMessages } = useChat({
-    // Extra fields merged into every POST body alongside `messages`
     transport: new DefaultChatTransport({
       api: '/api/chat',
       body: {
@@ -140,6 +173,65 @@ export default function AiTutorChat({
 
   const isLoading = status === 'submitted' || status === 'streaming'
 
+  // Initialize SpeechRecognition on mount
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition()
+      recognition.continuous = false
+      recognition.interimResults = true
+      recognition.lang = 'en-US'
+
+      recognition.onresult = (event: any) => {
+        let transcript = ''
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript
+        }
+        setInputText((prev) => {
+          const trimmed = prev.trim()
+          return trimmed ? `${trimmed} ${transcript}` : transcript
+        })
+      }
+
+      recognition.onerror = (event: any) => {
+        console.error('[SpeechRecognition error]', event.error)
+        setIsListening(false)
+        if (event.error === 'not-allowed') {
+          toast.error('Microphone access was denied. Please allow microphone permission.')
+        } else if (event.error !== 'no-speech') {
+          toast.error(`Voice error: ${event.error}`)
+        }
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
+      }
+
+      recognitionRef.current = recognition
+    }
+  }, [])
+
+  function toggleListening() {
+    if (!recognitionRef.current) {
+      toast.error('Voice dictation is not supported in this browser.')
+      return
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop()
+      setIsListening(false)
+    } else {
+      try {
+        recognitionRef.current.start()
+        setIsListening(true)
+        toast('Listening… speak your question', { icon: '🎙️' })
+      } catch (err) {
+        console.error(err)
+      }
+    }
+  }
+
   // Auto-scroll to latest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -154,6 +246,10 @@ export default function AiTutorChat({
   function handleSend() {
     const text = inputText.trim()
     if (!text || isLoading) return
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop()
+      setIsListening(false)
+    }
     sendMessage({ text })
     setInputText('')
   }
@@ -214,11 +310,32 @@ export default function AiTutorChat({
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question… (Enter to send)"
+            placeholder={isListening ? 'Listening… speak clearly into your mic' : 'Ask a question… (Enter to send)'}
             rows={1}
             disabled={isLoading}
-            className="flex-1 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition disabled:opacity-50 max-h-32"
+            className={`flex-1 resize-none px-3.5 py-2.5 rounded-xl border text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition disabled:opacity-50 max-h-32 ${
+              isListening
+                ? 'border-rose-300 bg-rose-50/40 focus:ring-rose-400'
+                : 'border-slate-200 bg-slate-50 focus:ring-indigo-400'
+            }`}
           />
+
+          {/* Microphone speech-to-text button */}
+          <button
+            type="button"
+            onClick={toggleListening}
+            disabled={isLoading}
+            title={isListening ? 'Stop listening' : 'Voice input (Dictate question)'}
+            className={`flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-xl transition ${
+              isListening
+                ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse shadow-md shadow-rose-200'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+            }`}
+          >
+            {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+          </button>
+
+          {/* Send button */}
           <button
             type="button"
             onClick={handleSend}
@@ -231,7 +348,7 @@ export default function AiTutorChat({
           </button>
         </div>
         <p className="text-center text-xs text-slate-400 mt-2">
-          AI may make mistakes. Always verify with your teacher.
+          {isListening ? '🎙️ Speak now — click mic again when finished' : 'AI may make mistakes. Always verify with your teacher.'}
         </p>
       </div>
     </div>
@@ -247,7 +364,7 @@ export default function AiTutorChat({
     <>
       {/* Floating chat window */}
       {isOpen && (
-        <div className="fixed bottom-20 right-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] h-[520px] shadow-2xl shadow-indigo-200/50 rounded-2xl flex flex-col">
+        <div className="fixed bottom-20 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[540px] shadow-2xl shadow-indigo-200/50 rounded-2xl flex flex-col">
           <button
             onClick={() => setIsOpen(false)}
             className="absolute top-3 right-3 z-10 p-1 rounded-full bg-white/80 backdrop-blur-sm text-slate-500 hover:text-slate-800 transition"
