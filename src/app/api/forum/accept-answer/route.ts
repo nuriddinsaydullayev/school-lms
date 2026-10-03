@@ -1,218 +1,197 @@
 import { google } from '@ai-sdk/google'
 import { generateText } from 'ai'
-import { createClient } from '@/utils/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { createClient, createAdminClient } from '@/utils/supabase/server'
+import type { AcceptResult, QualityTier } from '@/types/forum'
 
-// ── Config ─────────────────────────────────────────────────────────────────────
 export const maxDuration = 30
 
-/**
- * Subjects that trigger the AI quality-evaluation step before awarding tokens.
- * Factual / essay-based subjects where accuracy can be assessed by the model.
- */
-const AI_VERIFIED_SUBJECTS = new Set([
-  'History',
-  'Literature',
-  'English',
-  'Chemistry',
-  'Physics',
-])
-
-/** Token multipliers returned by AI evaluation (0 – 1.0 scale) */
-type QualityTier = 'excellent' | 'good' | 'partial' | 'poor'
+type Untyped = SupabaseClient<any, 'public', any>
 
 const QUALITY_MULTIPLIERS: Record<QualityTier, number> = {
-  excellent: 1.0,   // Full bounty
-  good:      0.75,  // 75 % of bounty
-  partial:   0.40,  // 40 % of bounty
-  poor:      0.0,   // No reward (incorrect / harmful)
+  excellent: 1.0,
+  good:      0.75,
+  partial:   0.4,
+  poor:      0.0,
 }
 
-// ── Request body type ──────────────────────────────────────────────────────────
-interface AcceptPayload {
-  questionId:     string   // UUID of the forum_questions row
-  answerId:       string   // UUID of the forum_answers row being accepted
-  answerAuthorId: string   // UUID of the user who wrote the answer
-  questionTitle:  string   // For AI context
-  questionBody:   string   // For AI context
-  answerBody:     string   // The actual answer text to be evaluated
-  subject:        string   // e.g. 'History' | 'Math' | …
-  bounty:         number   // Declared bounty on the question
+function json(body: AcceptResult, status = 200) {
+  return NextResponse.json(body, { status })
 }
 
-// ── POST /api/forum/accept-answer ──────────────────────────────────────────────
+// ── POST /api/forum/accept-answer ─────────────────────────────────────────────
+// Body: { questionId, answerId }. Everything else (bounty, author, AI flag,
+// answer text) is read from the DB — never trusted from the client.
 export async function POST(req: Request) {
   const supabase = await createClient()
 
-  // ── 1. Auth guard — caller must be authenticated ──────────────────────────
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // 1. Auth
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return json({ success: false, error: 'Unauthorized' }, 401)
 
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  // ── 2. Parse & validate payload ───────────────────────────────────────────
-  let payload: AcceptPayload
+  // 2. Payload
+  let questionId: string, answerId: string
   try {
-    payload = await req.json()
+    ;({ questionId, answerId } = await req.json())
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    return json({ success: false, error: 'Invalid JSON body' }, 400)
   }
+  if (!questionId || !answerId) return json({ success: false, error: 'questionId and answerId are required' }, 400)
 
-  const {
-    questionId,
-    answerId,
-    answerAuthorId,
-    questionTitle,
-    questionBody,
-    answerBody,
-    subject,
-    bounty,
-  } = payload
+  // 3. Load question + answer under the caller's RLS (enforces same school)
+  const userDb = supabase as unknown as Untyped
 
-  if (!questionId || !answerId || !answerAuthorId || !answerBody || bounty == null) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-  }
-
-  // ── 3. Verify caller IS the question author ───────────────────────────────
-  const { data: question, error: qErr } = await (supabase as any)
+  const { data: question } = await userDb
     .from('forum_questions')
-    .select('author_id, solved')
+    .select('id, school_id, author_id, title, body, subject, bounty, is_ai_graded, status, bounty_escrowed')
     .eq('id', questionId)
     .maybeSingle()
 
-  if (qErr || !question) {
-    return NextResponse.json({ error: 'Question not found' }, { status: 404 })
-  }
-
+  if (!question) return json({ success: false, error: 'Question not found' }, 404)
   if (question.author_id !== user.id) {
-    return NextResponse.json(
-      { error: 'Only the question author can accept an answer' },
-      { status: 403 }
-    )
+    return json({ success: false, error: 'Only the question author can accept an answer' }, 403)
+  }
+  if (question.status !== 'open') {
+    return json({ success: false, error: 'This question is already solved or closed' }, 409)
   }
 
-  // ── 4. Prevent double-accept ──────────────────────────────────────────────
-  if (question.solved) {
-    return NextResponse.json(
-      { error: 'This question is already solved' },
-      { status: 409 }
-    )
+  const { data: answer } = await userDb
+    .from('forum_answers')
+    .select('id, question_id, author_id, body')
+    .eq('id', answerId)
+    .maybeSingle()
+
+  if (!answer || answer.question_id !== questionId) {
+    return json({ success: false, error: 'Answer not found for this question' }, 404)
   }
 
-  // ── 5. Determine token reward amount ─────────────────────────────────────
-  let tokensAwarded = bounty            // default: full bounty
-  let qualityTier: QualityTier = 'excellent'
+  // 4. Self-answer exploit guard
+  if (answer.author_id === user.id) {
+    return json({ success: false, error: 'You cannot accept your own answer' }, 403)
+  }
+
+  const admin = createAdminClient()
+  const db    = admin as unknown as Untyped
+
+  // 5. Atomic claim: only one request can flip open → solved
+  const { data: locked, error: lockErr } = await db
+    .from('forum_questions')
+    .update({ status: 'solved', solved: true, closed_at: new Date().toISOString() })
+    .eq('id', questionId)
+    .eq('status', 'open')
+    .select('id')
+
+  if (lockErr) return json({ success: false, error: 'Failed to update question' }, 500)
+  if (!locked || locked.length === 0) {
+    return json({ success: false, error: 'This question was already resolved' }, 409)
+  }
+
+  const { error: ansErr } = await db
+    .from('forum_answers')
+    .update({ is_accepted: true })
+    .eq('id', answerId)
+
+  if (ansErr) {
+    // Roll back the claim so the author can retry
+    await db.from('forum_questions').update({ status: 'open', solved: false, closed_at: null }).eq('id', questionId)
+    return json({ success: false, error: 'Failed to mark answer as accepted' }, 500)
+  }
+
+  // 6. Reward amount — AI grading only if the author opted in
+  const bounty: number = question.bounty
+  let tokensAwarded = bounty
+  let qualityTier: QualityTier | null = null
   let aiRationale: string | null = null
+  let aiVerified = false
 
-  if (AI_VERIFIED_SUBJECTS.has(subject)) {
-    // ── 5a. Call AI for quality evaluation ─────────────────────────────────
-    const evalPrompt = `
-You are an academic quality evaluator for a school forum.
-A student asked a question and another student answered. 
-Your job is to rate the ACCURACY and QUALITY of the answer.
+  if (question.is_ai_graded) {
+    const prompt = `
+You are an academic quality evaluator for a school Q&A forum.
+Rate the ACCURACY and QUALITY of the student's answer.
 
-QUESTION (subject: ${subject}):
-Title: ${questionTitle}
-${questionBody ? `Details: ${questionBody}` : ''}
+QUESTION (subject: ${question.subject}):
+Title: ${question.title}
+${question.body ? `Details: ${question.body}` : ''}
 
-ANSWER TO EVALUATE:
-"${answerBody}"
+ANSWER:
+"""${answer.body}"""
 
-Rate the answer using EXACTLY one of these tiers (output the tier name only on the FIRST line, followed by a one-sentence rationale on the second line):
-- excellent   → factually correct, thorough, easy to understand
-- good        → mostly correct with minor gaps
-- partial     → partially correct or missing important detail
-- poor        → factually wrong, misleading, or unhelpful
+Tiers:
+- excellent → factually correct, thorough, easy to understand
+- good      → mostly correct with minor gaps
+- partial   → partially correct or missing important detail
+- poor      → wrong, misleading, or unhelpful
 
-Output format:
-TIER: <one of: excellent|good|partial|poor>
+Respond in exactly this format:
+TIER: <excellent|good|partial|poor>
 REASON: <one sentence>
 `.trim()
 
     try {
       const { text } = await generateText({
         model:           google('gemini-3.5-flash'),
-        prompt:          evalPrompt,
-        maxOutputTokens: 80,
-        temperature:     0.1,   // low temperature for consistent grading
+        prompt,
+        maxOutputTokens: 100,
+        temperature:     0.1,
       })
+      const tier   = text.match(/TIER:\s*(excellent|good|partial|poor)/i)?.[1]?.toLowerCase() as QualityTier | undefined
+      const reason = text.match(/REASON:\s*(.+)/i)?.[1]?.trim()
 
-      // Parse the structured response
-      const tierMatch   = text.match(/TIER:\s*(excellent|good|partial|poor)/i)
-      const reasonMatch = text.match(/REASON:\s*(.+)/i)
-
-      if (tierMatch) {
-        qualityTier  = tierMatch[1].toLowerCase() as QualityTier
-        aiRationale  = reasonMatch?.[1]?.trim() ?? null
-        tokensAwarded = Math.round(bounty * QUALITY_MULTIPLIERS[qualityTier])
+      if (tier) {
+        qualityTier   = tier
+        aiRationale   = reason ?? null
+        aiVerified    = true
+        tokensAwarded = Math.round(bounty * QUALITY_MULTIPLIERS[tier])
       }
-    } catch (aiErr) {
-      // AI evaluation failed — fall back to full bounty (safe default)
-      console.error('[accept-answer] AI evaluation error, using full bounty fallback:', aiErr)
-      qualityTier   = 'excellent'
-      tokensAwarded = bounty
-      aiRationale   = null
+    } catch (err) {
+      console.error('[accept-answer] AI evaluation failed — paying full bounty:', err)
     }
   }
 
-  // ── 6. Mark answer as accepted & question as solved ──────────────────────
-  const { error: ansErr } = await (supabase as any)
-    .from('forum_answers')
-    .update({ is_accepted: true })
-    .eq('id', answerId)
-    .eq('question_id', questionId)   // safety: must belong to the question
+  // 7. Payouts (service role: student RLS can't credit another student)
+  const ledger: Array<Record<string, unknown>> = []
 
-  if (ansErr) {
-    console.error('[accept-answer] Failed to mark answer accepted:', ansErr.message)
-    return NextResponse.json({ error: 'Failed to mark answer as accepted' }, { status: 500 })
-  }
-
-  const { error: qUpdateErr } = await (supabase as any)
-    .from('forum_questions')
-    .update({ solved: true })
-    .eq('id', questionId)
-
-  if (qUpdateErr) {
-    console.error('[accept-answer] Failed to mark question solved:', qUpdateErr.message)
-    // Non-fatal — answer is already marked; continue to token award
-  }
-
-  // ── 7. Award tokens to the ANSWER AUTHOR (not the caller) ────────────────
   if (tokensAwarded > 0) {
-    const { error: tokenErr } = await supabase.from('tokens').insert({
-      student_id: answerAuthorId,    // ← answer author gets the reward
-      amount:     tokensAwarded,
-      type:       'earned',
-      reason:     `Forum bounty: "${questionTitle.slice(0, 60)}" [${subject}]${
+    ledger.push({
+      school_id:    question.school_id,
+      student_id:   answer.author_id,                  // ← the ANSWER AUTHOR
+      type:         'earned',
+      amount:       tokensAwarded,
+      reason:       `Forum answer accepted: "${String(question.title).slice(0, 60)}"${
         aiRationale ? ` — AI: ${aiRationale.slice(0, 80)}` : ''
       }`,
+      reference_id: questionId,
     })
+  }
 
+  // Unawarded part of an escrowed bounty goes back to the asker
+  const refunded = question.bounty_escrowed ? bounty - tokensAwarded : 0
+  if (refunded > 0) {
+    ledger.push({
+      school_id:    question.school_id,
+      student_id:   user.id,
+      type:         'earned',
+      amount:       refunded,
+      reason:       `Forum bounty refund (AI-graded ${qualityTier}): "${String(question.title).slice(0, 60)}"`,
+      reference_id: questionId,
+    })
+  }
+
+  if (ledger.length > 0) {
+    const { error: tokenErr } = await db.from('tokens').insert(ledger)
     if (tokenErr) {
-      console.error('[accept-answer] Failed to insert token reward:', tokenErr.message)
-      // Answer is already accepted — report partial success
-      return NextResponse.json(
+      console.error('[accept-answer] Token payout failed:', tokenErr.message)
+      return json(
         {
-          success:       true,
-          warning:       'Answer accepted but token transfer failed. Contact support.',
-          tokensAwarded: 0,
-          qualityTier,
-          aiRationale,
+          success: true,
+          warning: 'Answer accepted, but the token payout failed. Please contact a teacher.',
+          tokensAwarded: 0, refunded: 0, qualityTier, aiRationale, aiVerified,
         },
-        { status: 207 }
+        207
       )
     }
   }
 
-  // ── 8. Return result to client ────────────────────────────────────────────
-  return NextResponse.json({
-    success:       true,
-    tokensAwarded,
-    qualityTier,
-    aiRationale,
-    aiVerified:    AI_VERIFIED_SUBJECTS.has(subject),
-  })
+  return json({ success: true, tokensAwarded, refunded, qualityTier, aiRationale, aiVerified })
 }
