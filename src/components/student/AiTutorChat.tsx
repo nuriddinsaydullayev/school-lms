@@ -8,6 +8,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import toast from 'react-hot-toast'
+import { createClient } from '@/utils/supabase/client'
 import {
   Brain,
   Send,
@@ -155,6 +156,8 @@ export default function AiTutorChat({
   const inputRef       = useRef<HTMLTextAreaElement>(null)
   const recognitionRef = useRef<any>(null)
 
+  const storageKey = `eduspark_ai_chat_${assignmentId ?? 'general'}`
+
   // ── AI SDK v7 useChat ─────────────────────────────────────
   const { messages, sendMessage, status, setMessages } = useChat({
     transport: new DefaultChatTransport({
@@ -172,6 +175,70 @@ export default function AiTutorChat({
   })
 
   const isLoading = status === 'submitted' || status === 'streaming'
+
+  // ── Restore chat history from localStorage or Supabase ────
+  useEffect(() => {
+    let restored = false
+
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed)
+          restored = true
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse chat from localStorage', e)
+    }
+
+    if (!restored) {
+      // Fallback: load recent prompt/response logs from Supabase
+      const supabase = createClient()
+      let query = supabase
+        .from('ai_tutor_logs')
+        .select('id, prompt, response, created_at')
+        .order('created_at', { ascending: true })
+        .limit(8)
+
+      if (assignmentId) {
+        query = query.eq('assignment_id', assignmentId)
+      }
+
+      query.then(({ data, error }) => {
+        if (!error && data && data.length > 0) {
+          const historyMessages: UIMessage[] = [
+            makeWelcomeMessage(assignmentTitle),
+          ]
+          data.forEach((log) => {
+            historyMessages.push({
+              id: `user-${log.id}`,
+              role: 'user',
+              parts: [{ type: 'text', text: log.prompt }],
+            })
+            historyMessages.push({
+              id: `assistant-${log.id}`,
+              role: 'assistant',
+              parts: [{ type: 'text', text: log.response }],
+            })
+          })
+          setMessages(historyMessages)
+        }
+      })
+    }
+  }, [assignmentId, storageKey, setMessages, assignmentTitle])
+
+  // ── Persist messages to localStorage on change ─────────────
+  useEffect(() => {
+    if (messages.length > 1) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(messages))
+      } catch (e) {
+        console.warn('Failed to save chat to localStorage', e)
+      }
+    }
+  }, [messages, storageKey])
 
   // Initialize SpeechRecognition on mount
   useEffect(() => {
@@ -262,7 +329,11 @@ export default function AiTutorChat({
   }
 
   function handleReset() {
+    try {
+      localStorage.removeItem(storageKey)
+    } catch (e) {}
     setMessages([makeWelcomeMessage(assignmentTitle)])
+    toast.success('Conversation history reset')
   }
 
   // ── Chat panel (shared between bubble and panel variants) ──
@@ -286,7 +357,7 @@ export default function AiTutorChat({
         </div>
         <button
           onClick={handleReset}
-          title="Clear conversation"
+          title="Clear conversation history"
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
         >
           <RotateCcw size={15} />

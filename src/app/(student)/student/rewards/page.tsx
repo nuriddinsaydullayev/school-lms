@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import {
   Coins,
   Gift,
@@ -11,14 +11,14 @@ import {
   ShieldCheck,
   ShoppingBag,
   School,
-  Coffee,
-  BookOpen,
   X,
   History,
   Tag,
+  Loader2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
+import { purchaseReward, getStudentRewardsData } from '@/app/actions/rewards'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type RewardCategory = 'all' | 'privilege' | 'gift'
@@ -38,8 +38,9 @@ interface Redemption {
   id: string
   itemName: string
   cost: number
-  redeemedAt: Date
+  redeemedAt: string | Date
   code: string
+  status?: string
 }
 
 // ── Store Items Data ──────────────────────────────────────────────────────────
@@ -128,13 +129,32 @@ const REWARD_ITEMS: RewardItem[] = [
 ]
 
 export default function RewardsPage() {
-  // Default mock balance of 150 tokens as requested
-  const [balance, setBalance] = useState<number>(150)
+  const [balance, setBalance] = useState<number>(0)
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true)
   const [selectedCategory, setSelectedCategory] = useState<RewardCategory>('all')
   const [selectedItem, setSelectedItem] = useState<RewardItem | null>(null)
   const [isConfirming, setIsConfirming] = useState<boolean>(false)
   const [redemptions, setRedemptions] = useState<Redemption[]>([])
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false)
+  const [isPending, startTransition] = useTransition()
+
+  // ── Load Real Supabase Balance & Redemptions on Mount ───────
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const data = await getStudentRewardsData()
+        setBalance(data.balance ?? 0)
+        if (data.redemptions && data.redemptions.length > 0) {
+          setRedemptions(data.redemptions)
+        }
+      } catch (err) {
+        console.error('Failed to load rewards data:', err)
+      } finally {
+        setIsLoadingData(false)
+      }
+    }
+    loadData()
+  }, [])
 
   const privileges = REWARD_ITEMS.filter((item) => item.category === 'privilege')
   const gifts = REWARD_ITEMS.filter((item) => item.category === 'gift')
@@ -151,26 +171,41 @@ export default function RewardsPage() {
   function handleConfirmRedeem() {
     if (!selectedItem || balance < selectedItem.cost) return
 
-    const redemptionCode = `EDUSPARK-${Math.random().toString(36).substring(2, 7).toUpperCase()}`
-    
-    setBalance((prev) => prev - selectedItem.cost)
-    setRedemptions((prev) => [
-      {
-        id: Date.now().toString(),
-        itemName: selectedItem.name,
-        cost: selectedItem.cost,
-        redeemedAt: new Date(),
-        code: redemptionCode,
-      },
-      ...prev,
-    ])
+    startTransition(async () => {
+      const res = await purchaseReward(selectedItem.name, selectedItem.cost)
 
-    toast.success(`🎉 Redeemed ${selectedItem.name}! Voucher code: ${redemptionCode}`, {
-      duration: 5000,
+      if (res.success) {
+        const voucherCode = res.voucherCode || `EDUSPARK-${Math.random().toString(36).substring(2, 7).toUpperCase()}`
+        
+        // Deduct balance locally & log redemption
+        if (res.remainingBalance !== undefined) {
+          setBalance(res.remainingBalance)
+        } else {
+          setBalance((prev) => prev - selectedItem.cost)
+        }
+
+        setRedemptions((prev) => [
+          {
+            id: Date.now().toString(),
+            itemName: selectedItem.name,
+            cost: selectedItem.cost,
+            redeemedAt: new Date().toISOString(),
+            code: voucherCode,
+            status: 'active',
+          },
+          ...prev,
+        ])
+
+        toast.success(`🎉 Redeemed ${selectedItem.name}! Voucher code: ${voucherCode}`, {
+          duration: 6000,
+        })
+
+        setIsConfirming(false)
+        setSelectedItem(null)
+      } else {
+        toast.error(res.error || 'Failed to complete redemption.')
+      }
     })
-
-    setIsConfirming(false)
-    setSelectedItem(null)
   }
 
   return (
@@ -212,20 +247,29 @@ export default function RewardsPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
+                  disabled={isPending}
                   onClick={() => {
                     setIsConfirming(false)
                     setSelectedItem(null)
                   }}
-                  className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition"
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
+                  disabled={isPending}
                   onClick={handleConfirmRedeem}
-                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-sm font-semibold shadow-md shadow-indigo-200 transition"
+                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-sm font-semibold shadow-md shadow-indigo-200 transition flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  Confirm &amp; Redeem
+                  {isPending ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Redeeming…
+                    </>
+                  ) : (
+                    'Confirm & Redeem'
+                  )}
                 </button>
               </div>
             </div>
@@ -276,7 +320,9 @@ export default function RewardsPage() {
                         -{red.cost}
                       </p>
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        {red.redeemedAt.toLocaleDateString()}
+                        {typeof red.redeemedAt === 'string'
+                          ? new Date(red.redeemedAt).toLocaleDateString()
+                          : red.redeemedAt.toLocaleDateString()}
                       </p>
                     </div>
                   </div>
@@ -315,7 +361,7 @@ export default function RewardsPage() {
                   Your Balance
                 </span>
                 <span className="text-3xl font-extrabold text-white tracking-tight tabular-nums">
-                  {balance}
+                  {isLoadingData ? '…' : balance}
                 </span>
                 <span className="text-xs font-semibold text-amber-300 ml-1.5">Tokens</span>
               </div>
@@ -464,7 +510,7 @@ export default function RewardsPage() {
                     <button
                       type="button"
                       onClick={() => handleOpenRedeem(item)}
-                      disabled={!canAfford}
+                      disabled={!canAfford || isPending}
                       className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                         canAfford
                           ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200'
@@ -551,7 +597,7 @@ export default function RewardsPage() {
                     <button
                       type="button"
                       onClick={() => handleOpenRedeem(item)}
-                      disabled={!canAfford}
+                      disabled={!canAfford || isPending}
                       className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                         canAfford
                           ? 'bg-violet-600 hover:bg-violet-700 text-white shadow-sm shadow-violet-200'

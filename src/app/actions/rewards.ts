@@ -2,9 +2,15 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/utils/supabase/server'
-import type { ActionResult } from './homework'
 
-export async function purchaseReward(itemName: string, cost: number): Promise<ActionResult> {
+export interface PurchaseResult {
+  success: boolean
+  error?: string
+  voucherCode?: string
+  remainingBalance?: number
+}
+
+export async function purchaseReward(itemName: string, cost: number): Promise<PurchaseResult> {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -18,16 +24,13 @@ export async function purchaseReward(itemName: string, cost: number): Promise<Ac
     .maybeSingle()
 
   if (balanceError) return { success: false, error: balanceError.message }
-  
+
   const currentBalance = balanceRecord?.balance ?? 0
   if (currentBalance < cost) {
     return { success: false, error: "You don't have enough tokens for this item!" }
   }
 
-  // 2. Spend the tokens
-  // A student IS allowed to insert their own 'spent' tokens via RLS, or we can use admin.
-  // The RLS policy for tokens is: (get_my_role() = 'teacher' or auth.uid() = student_id)
-  // So the student can safely insert a spent record.
+  // 2. Spend the tokens in the append-only ledger
   const { error: insertError } = await supabase
     .from('tokens')
     .insert({
@@ -41,9 +44,70 @@ export async function purchaseReward(itemName: string, cost: number): Promise<Ac
     return { success: false, error: insertError.message }
   }
 
+  const voucherCode = `EDUSPARK-${Math.random().toString(36).substring(2, 7).toUpperCase()}`
+
+  // 3. Log to reward_redemptions table
+  try {
+    await (supabase as any)
+      .from('reward_redemptions')
+      .insert({
+        student_id: user.id,
+        item_name: itemName,
+        cost: cost,
+        voucher_code: voucherCode,
+        status: 'active',
+      })
+  } catch (e) {
+    // Non-blocking fallback
+  }
+
   // Refresh routes
   revalidatePath('/student/rewards')
   revalidatePath('/student/dashboard')
-  
-  return { success: true }
+
+  return {
+    success: true,
+    voucherCode,
+    remainingBalance: currentBalance - cost,
+  }
+}
+
+export async function getStudentRewardsData() {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { balance: 0, redemptions: [] }
+
+  const { data: balanceRecord } = await supabase
+    .from('token_balances')
+    .select('balance')
+    .eq('student_id', user.id)
+    .maybeSingle()
+
+  let redemptions: any[] = []
+  try {
+    const { data: redData } = await (supabase as any)
+      .from('reward_redemptions')
+      .select('*')
+      .eq('student_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (redData) {
+      redemptions = redData.map((r: any) => ({
+        id: r.id,
+        itemName: r.item_name,
+        cost: r.cost,
+        code: r.voucher_code,
+        redeemedAt: r.created_at,
+        status: r.status,
+      }))
+    }
+  } catch (e) {
+    // Non-blocking fallback
+  }
+
+  return {
+    balance: balanceRecord?.balance ?? 0,
+    redemptions,
+  }
 }
