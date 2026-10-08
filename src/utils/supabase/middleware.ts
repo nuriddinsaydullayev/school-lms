@@ -53,7 +53,8 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute      = pathname.startsWith('/login') || pathname.startsWith('/signup')
   const isStudentRoute   = pathname.startsWith('/student')
   const isTeacherRoute   = pathname.startsWith('/teacher')
-  const isProtectedRoute = isStudentRoute || isTeacherRoute
+  const isAdminRoute     = pathname.startsWith('/admin')
+  const isProtectedRoute = isStudentRoute || isTeacherRoute || isAdminRoute
 
   // 1. Redirect unauthenticated users away from protected routes
   if (!user && isProtectedRoute) {
@@ -72,7 +73,12 @@ export async function updateSession(request: NextRequest) {
       .eq('id', user.id)
       .maybeSingle()
 
-    const dashboardPath = profile?.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard'
+    let dashboardPath = '/student/dashboard'
+    if (profile?.role === 'admin') {
+      dashboardPath = '/admin/dashboard'
+    } else if (profile?.role === 'teacher') {
+      dashboardPath = '/teacher/dashboard'
+    }
     const dashboardUrl = request.nextUrl.clone()
     dashboardUrl.pathname = dashboardPath
     return NextResponse.redirect(dashboardUrl)
@@ -88,17 +94,22 @@ export async function updateSession(request: NextRequest) {
 
     const role = profile?.role
 
-    if (isStudentRoute && role !== 'student') {
-      // Teacher trying to access student routes → redirect to their dashboard
+    if (isAdminRoute && role !== 'admin') {
+      // Non-admins trying to access admin routes → redirect to their dashboard
       const url = request.nextUrl.clone()
-      url.pathname = '/teacher/dashboard'
+      url.pathname = role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+    if (isStudentRoute && role !== 'student') {
+      const url = request.nextUrl.clone()
+      url.pathname = role === 'admin' ? '/admin/dashboard' : '/teacher/dashboard'
       return NextResponse.redirect(url)
     }
 
     if (isTeacherRoute && role !== 'teacher') {
-      // Student trying to access teacher routes → redirect to their dashboard
       const url = request.nextUrl.clone()
-      url.pathname = '/student/dashboard'
+      url.pathname = role === 'admin' ? '/admin/dashboard' : '/student/dashboard'
       return NextResponse.redirect(url)
     }
   }

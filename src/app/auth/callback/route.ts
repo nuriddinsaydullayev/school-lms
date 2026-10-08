@@ -25,9 +25,11 @@ export async function GET(request: Request) {
         .eq('id', data.user.id)
         .maybeSingle()
 
-      const destination =
-        redirectTo ??
-        (profile?.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard')
+      let defaultDashboard = '/student/dashboard'
+      if (profile?.role === 'admin') defaultDashboard = '/admin/dashboard'
+      else if (profile?.role === 'teacher') defaultDashboard = '/teacher/dashboard'
+
+      const destination = redirectTo ?? defaultDashboard
 
       return NextResponse.redirect(`${origin}${destination}`)
     }

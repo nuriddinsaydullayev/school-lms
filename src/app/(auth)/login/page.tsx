@@ -110,7 +110,10 @@ export default function LoginPage() {
       .maybeSingle()
 
     toast.success(`Welcome back!`)
-    router.push(profile?.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard')
+    let target = '/student/dashboard'
+    if (profile?.role === 'admin') target = '/admin/dashboard'
+    else if (profile?.role === 'teacher') target = '/teacher/dashboard'
+    router.push(target)
     router.refresh()
   }
 
