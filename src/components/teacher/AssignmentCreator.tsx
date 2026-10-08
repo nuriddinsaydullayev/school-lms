@@ -15,7 +15,8 @@ export default function AssignmentCreator({ classes }: AssignmentCreatorProps) {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const form = new FormData(e.currentTarget)
+    const formElement = e.currentTarget
+    const form = new FormData(formElement)
     
     const data = {
       title: form.get('title') as string,
@@ -32,8 +33,7 @@ export default function AssignmentCreator({ classes }: AssignmentCreatorProps) {
       const res = await createAssignment(data)
       if (res.success) {
         toast.success('Assignment created & published!')
-        // Ideally we reset the form here
-        ;(e.target as HTMLFormElement).reset()
+        formElement.reset()
       } else {
         toast.error(res.error || 'Failed to create assignment')
       }

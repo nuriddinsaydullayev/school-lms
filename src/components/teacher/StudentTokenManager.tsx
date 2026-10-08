@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import { Coins, Loader2, X, PlusCircle, MinusCircle, User } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { manageStudentTokens } from '@/app/actions/teacher'
@@ -18,13 +18,18 @@ interface StudentTokenManagerProps {
   students: StudentItem[]
 }
 
-export default function StudentTokenManager({ students }: StudentTokenManagerProps) {
+export default function StudentTokenManager({ students: initialStudents }: StudentTokenManagerProps) {
+  const [students, setStudents] = useState<StudentItem[]>(initialStudents)
   const [selectedStudent, setSelectedStudent] = useState<StudentItem | null>(null)
   const [mode, setMode] = useState<'reward' | 'deduct'>('reward')
   const [amount, setAmount] = useState<number>(10)
   const [reason, setReason] = useState<string>('')
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+
+  useEffect(() => {
+    setStudents(initialStudents)
+  }, [initialStudents])
 
   function handleOpenModal(student: StudentItem, defaultMode: 'reward' | 'deduct' = 'reward') {
     setSelectedStudent(student)
@@ -68,6 +73,16 @@ export default function StudentTokenManager({ students }: StudentTokenManagerPro
             ? `Awarded ${amount} tokens to ${selectedStudent.full_name}! 🪙`
             : `Deducted ${amount} tokens from ${selectedStudent.full_name}.`
         )
+
+        // Optimistically update the balance in local state immediately
+        setStudents((prev) =>
+          prev.map((s) =>
+            s.id === selectedStudent.id
+              ? { ...s, token_balance: Math.max(0, s.token_balance + calculatedAmount) }
+              : s
+          )
+        )
+
         handleCloseModal()
         router.refresh()
       } else {

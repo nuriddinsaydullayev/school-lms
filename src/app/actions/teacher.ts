@@ -13,20 +13,64 @@ export async function createAssignment(data: {
   description: string
   class_id: string
   due_date?: string
-  max_score: number
-  xp_reward: number
-  token_reward: number
-  is_published: boolean
+  max_score?: number
+  xp_reward?: number
+  token_reward?: number
+  is_published?: boolean
 }): Promise<ActionResult> {
   const supabase = await createClient()
 
+  // 1. Authenticate caller
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Unauthorized' }
 
+  // 2. Verify caller has 'teacher' role and obtain school_id
+  const { data: teacherProfile } = await supabase
+    .from('profiles')
+    .select('role, school_id')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (!teacherProfile || teacherProfile.role !== 'teacher') {
+    return { success: false, error: 'Only teachers can create assignments.' }
+  }
+
+  const title = data.title.trim()
+  if (!title) {
+    return { success: false, error: 'Title is required.' }
+  }
+
+  if (!data.class_id) {
+    return { success: false, error: 'A class must be selected.' }
+  }
+
+  // 3. Verify class belongs to this teacher and matches their school_id
+  const { data: cls } = await supabase
+    .from('classes')
+    .select('id, teacher_id, school_id')
+    .eq('id', data.class_id)
+    .maybeSingle()
+
+  if (!cls || cls.teacher_id !== user.id || cls.school_id !== teacherProfile.school_id) {
+    return { success: false, error: 'Invalid class selection or permission denied.' }
+  }
+
+  // 4. Secure insert with teacher_id and school_id enforced
+  const maxScore = Number(data.max_score) || 100
+  const xpReward = Number(data.xp_reward) || 50
+  const tokenReward = Number(data.token_reward) || 10
+
   const { error } = await supabase.from('assignments').insert({
-    ...data,
+    title,
+    description: data.description ? data.description.trim() : null,
+    class_id: data.class_id,
     teacher_id: user.id,
-    due_date: data.due_date || null,
+    school_id: teacherProfile.school_id,
+    due_date: data.due_date ? new Date(data.due_date).toISOString() : null,
+    max_score: maxScore,
+    xp_reward: xpReward,
+    token_reward: tokenReward,
+    is_published: data.is_published ?? true,
   })
 
   if (error) {
@@ -34,6 +78,8 @@ export async function createAssignment(data: {
   }
 
   revalidatePath('/teacher/dashboard')
+  revalidatePath('/teacher/assignments')
+  revalidatePath('/student/assignments')
   return { success: true }
 }
 
@@ -202,5 +248,6 @@ export async function manageStudentTokens(data: {
   }
 
   revalidatePath('/teacher/classes')
+  revalidatePath('/teacher/classes/[id]', 'page')
   return { success: true }
 }
