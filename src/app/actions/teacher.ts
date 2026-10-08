@@ -89,32 +89,124 @@ export async function createAssignment(data: {
 export async function gradeSubmission(
   submissionId: string,
   score: number,
-  feedback: string
+  feedback: string,
+  decision: 'approve' | 'return' = 'approve'
 ): Promise<ActionResult> {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Unauthorized' }
 
-  // We should verify this submission belongs to an assignment owned by this teacher.
-  // RLS handles this (teachers can only update if they own the assignment),
-  // but we can just attempt the update and let RLS block it if unauthorized.
-  
-  const { error } = await supabase
+  // 1. Verify caller has teacher role & fetch school_id
+  const { data: teacherProfile } = await supabase
+    .from('profiles')
+    .select('role, school_id')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (!teacherProfile || teacherProfile.role !== 'teacher') {
+    return { success: false, error: 'Only teachers can grade submissions.' }
+  }
+
+  // 2. Fetch submission and assignment details ensuring assignment belongs to this teacher
+  const admin = createAdminClient()
+  const { data: submission, error: subError } = await admin
+    .from('submissions')
+    .select(`
+      id,
+      status,
+      student_id,
+      assignment_id,
+      assignments:assignments!assignment_id (
+        id,
+        title,
+        teacher_id,
+        school_id,
+        token_reward,
+        xp_reward,
+        max_score
+      )
+    `)
+    .eq('id', submissionId)
+    .maybeSingle()
+
+  if (subError || !submission) {
+    return { success: false, error: 'Submission not found.' }
+  }
+
+  const assignment = submission.assignments as unknown as {
+    id: string
+    title: string
+    teacher_id: string
+    school_id: string | null
+    token_reward: number
+    xp_reward: number
+    max_score: number
+  } | null
+
+  if (!assignment || assignment.teacher_id !== user.id) {
+    return { success: false, error: 'Permission denied: You do not own this assignment.' }
+  }
+
+  const isApproved = decision === 'approve'
+  const newStatus = isApproved ? 'graded' : 'returned'
+
+  // 3. Update the submission status, score, and feedback
+  const { error: updateError } = await admin
     .from('submissions')
     .update({
-      status: 'graded',
-      score,
-      feedback: feedback || null,
+      status: newStatus,
+      score: isApproved ? Math.max(0, score) : null,
+      feedback: feedback ? feedback.trim() : null,
       graded_at: new Date().toISOString(),
     })
     .eq('id', submissionId)
 
-  if (error) {
-    return { success: false, error: error.message }
+  if (updateError) {
+    return { success: false, error: updateError.message }
   }
 
+  // 4. If approved and has token reward, grant tokens to student idempotently using service role
+  if (isApproved && assignment.token_reward > 0) {
+    const schoolId = teacherProfile.school_id ?? assignment.school_id
+
+    const grant = await grantTokens({
+      studentId: submission.student_id,
+      schoolId,
+      amount: assignment.token_reward,
+      reason: `Completed: ${assignment.title}`,
+      source: 'homework',
+      referenceId: assignment.id,
+    })
+
+    // If grant succeeded and wasn't already paid, award XP to student
+    if (grant.ok && !grant.duplicate && assignment.xp_reward > 0) {
+      const { data: studentProfile } = await admin
+        .from('profiles')
+        .select('xp_points')
+        .eq('id', submission.student_id)
+        .single()
+
+      if (studentProfile) {
+        const newXp = (studentProfile.xp_points ?? 0) + assignment.xp_reward
+        const newLevel = Math.min(Math.floor(newXp / 100) + 1, 10)
+
+        await admin
+          .from('profiles')
+          .update({ xp_points: newXp, level: newLevel })
+          .eq('id', submission.student_id)
+      }
+    }
+  }
+
+  // 5. Invalidate caches for teacher and student views
   revalidatePath('/teacher/dashboard')
+  revalidatePath('/teacher/classes')
+  revalidatePath('/student/dashboard')
+  revalidatePath('/student/assignments')
+  revalidatePath('/student/badges')
+  revalidatePath('/student/leaderboard')
+
   return { success: true }
 }
 

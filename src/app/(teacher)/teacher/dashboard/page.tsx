@@ -44,7 +44,7 @@ export default async function TeacherDashboardPage() {
       .from('submissions')
       .select(`
         *,
-        assignments!inner(title, teacher_id, max_score),
+        assignments!inner(title, teacher_id, max_score, token_reward, xp_reward),
         profiles(full_name)
       `)
       .eq('status', 'submitted')
