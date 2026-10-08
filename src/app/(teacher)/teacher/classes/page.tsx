@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
+import Link from 'next/link'
 import ClassCreator from '@/components/teacher/ClassCreator'
-import { Users, BookOpen } from 'lucide-react'
+import { Users, BookOpen, ChevronRight } from 'lucide-react'
 
 export const metadata: Metadata = { title: 'Manage Classes' }
 
@@ -70,11 +71,20 @@ export default async function TeacherClassesPage() {
                     {cls.description && (
                       <p className="text-sm text-slate-600 mb-4 line-clamp-2">{cls.description}</p>
                     )}
-                    <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-xs text-slate-500">Join code:</span>
-                      <code className="px-2 py-1 bg-slate-200 text-slate-800 font-mono font-bold text-sm rounded tracking-wider">
-                        {cls.join_code}
-                      </code>
+                    <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[11px] text-slate-400">Join:</span>
+                        <code className="px-1.5 py-0.5 bg-slate-200/80 text-slate-800 font-mono font-bold text-xs rounded tracking-wider">
+                          {cls.join_code}
+                        </code>
+                      </div>
+                      <Link
+                        href={`/teacher/classes/${cls.id}`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition shadow-xs"
+                      >
+                        View Class
+                        <ChevronRight size={13} />
+                      </Link>
                     </div>
                   </div>
                 ))
