@@ -16,6 +16,7 @@ import {
   CalendarDays,
   Medal,
   MessageCircle,
+  Settings,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { href: '/student/leaderboard', label: 'Leaderboard', icon: Trophy          },
   { href: '/student/badges',      label: 'Badges',      icon: Medal           },
   { href: '/student/rewards',     label: 'Rewards',     icon: Gift            },
+  { href: '/student/settings',    label: 'Settings',    icon: Settings        },
 ]
 
 interface StudentSidebarProps {
