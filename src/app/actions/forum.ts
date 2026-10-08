@@ -2,6 +2,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient, createAdminClient } from '@/utils/supabase/server'
+import { spendTokens } from '@/lib/tokens/ledger'
 import {
   FORUM_SUBJECTS,
   type ForumData,
@@ -133,19 +134,19 @@ export async function askQuestion(input: {
 
   if (qErr || !question) return { success: false, error: qErr?.message ?? 'Failed to create question' }
 
-  // 2. Escrow the bounty
-  const { error: tErr } = await admin.from('tokens').insert({
-    school_id:    profile.school_id,
-    student_id:   user.id,
-    type:         'spent',
-    amount:       bounty,
-    reason:       `Forum bounty escrow: "${title.slice(0, 60)}"`,
-    reference_id: question.id,
+  // 2. Escrow the bounty (atomic balance check + debit)
+  const spend = await spendTokens({
+    studentId:   user.id,
+    schoolId:    profile.school_id,
+    amount:      bounty,
+    reason:      `Forum bounty escrow: "${title.slice(0, 60)}"`,
+    source:      'forum_escrow',
+    referenceId: question.id,
   })
 
-  if (tErr) {
+  if (!spend.ok) {
     await db.from('forum_questions').delete().eq('id', question.id)   // roll back
-    return { success: false, error: 'Could not reserve your bounty. Please try again.' }
+    return { success: false, error: spend.insufficient ? spend.error : 'Could not reserve your bounty. Please try again.' }
   }
 
   await db.from('forum_questions').update({ bounty_escrowed: true }).eq('id', question.id)

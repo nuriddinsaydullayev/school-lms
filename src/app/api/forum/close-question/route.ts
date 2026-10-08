@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/utils/supabase/server'
+import { grantTokensBatch } from '@/lib/tokens/ledger'
 import {
   CLOSE_AFTER_HOURS,
   MAX_BONUS_CLAIMS_PER_WEEK,
@@ -102,24 +103,34 @@ export async function POST(req: Request) {
   }
 
   const title = String(q.title).slice(0, 60)
-  const ledger: Array<Record<string, unknown>> = []
+  const entries = []
   if (refunded > 0) {
-    ledger.push({
-      school_id: q.school_id, student_id: user.id, type: 'earned', amount: refunded,
-      reason: `Forum bounty refund (closed): "${title}"`, reference_id: questionId,
+    entries.push({
+      schoolId:    q.school_id,
+      studentId:   user.id,
+      type:        'earned' as const,
+      amount:      refunded,
+      reason:      `Forum bounty refund (closed): "${title}"`,
+      source:      'forum_refund' as const,
+      referenceId: questionId,
     })
   }
   if (bonus > 0) {
-    ledger.push({
-      school_id: q.school_id, student_id: user.id, type: 'bonus', amount: bonus,
-      reason: `${BONUS_REASON_PREFIX}: "${title}"`, reference_id: questionId,
+    entries.push({
+      schoolId:    q.school_id,
+      studentId:   user.id,
+      type:        'bonus' as const,
+      amount:      bonus,
+      reason:      `${BONUS_REASON_PREFIX}: "${title}"`,
+      source:      'forum_bonus' as const,
+      referenceId: questionId,
     })
   }
 
-  if (ledger.length > 0) {
-    const { error: tokenErr } = await db.from('tokens').insert(ledger)
-    if (tokenErr) {
-      console.error('[close-question] Token payout failed:', tokenErr.message)
+  if (entries.length > 0) {
+    const grant = await grantTokensBatch(entries)
+    if (!grant.ok) {
+      console.error('[close-question] Token payout failed:', grant.error)
       return json({ success: true, refunded: 0, bonus: 0, warning: 'Question closed, but the refund failed. Please contact a teacher.' }, 207)
     }
   }

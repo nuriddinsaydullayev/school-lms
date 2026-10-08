@@ -1,74 +1,98 @@
 'use server'
 
+import { randomBytes, randomUUID } from 'crypto'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/utils/supabase/server'
+import { createClient, createAdminClient } from '@/utils/supabase/server'
+import { findRewardItem } from '@/lib/rewards/catalog'
+import { spendTokens, grantTokens, getSchoolId } from '@/lib/tokens/ledger'
+
+type Untyped = SupabaseClient<any, 'public', any>
 
 export interface PurchaseResult {
   success: boolean
   error?: string
   voucherCode?: string
   remainingBalance?: number
+  redemptionId?: string
 }
 
-export async function purchaseReward(itemName: string, cost: number): Promise<PurchaseResult> {
-  const supabase = await createClient()
+function makeVoucherCode(): string {
+  // Cryptographically random, unambiguous alphabet (no 0/O/1/I)
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const bytes = randomBytes(8)
+  let code = ''
+  for (let i = 0; i < bytes.length; i++) {
+    code += alphabet[bytes[i] % alphabet.length]
+  }
+  return `EDUSPARK-${code}`
+}
 
+/**
+ * Purchase a reward by catalogue id.
+ * The price is looked up on the server — the client only says WHICH item.
+ */
+export async function purchaseReward(itemId: string): Promise<PurchaseResult> {
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Unauthorized' }
 
-  // 1. Check current balance
-  const { data: balanceRecord, error: balanceError } = await supabase
-    .from('token_balances')
-    .select('balance')
-    .eq('student_id', user.id)
-    .maybeSingle()
+  const item = typeof itemId === 'string' ? findRewardItem(itemId) : undefined
+  if (!item) return { success: false, error: 'Unknown reward item.' }
 
-  if (balanceError) return { success: false, error: balanceError.message }
+  const schoolId = await getSchoolId(user.id)
+  if (!schoolId) return { success: false, error: 'Your account is not linked to a school.' }
 
-  const currentBalance = balanceRecord?.balance ?? 0
-  if (currentBalance < cost) {
-    return { success: false, error: "You don't have enough tokens for this item!" }
-  }
+  const redemptionId = randomUUID()
 
-  // 2. Spend the tokens in the append-only ledger
-  const { error: insertError } = await supabase
-    .from('tokens')
+  // 1. Atomic debit (balance check + insert under a per-student lock)
+  const spend = await spendTokens({
+    studentId:   user.id,
+    schoolId,
+    amount:      item.cost,
+    reason:      `Purchased: ${item.name}`,
+    source:      'reward_purchase',
+    referenceId: redemptionId,
+  })
+  if (!spend.ok) return { success: false, error: spend.error }
+
+  // 2. Issue the voucher (service role — students cannot insert redemptions)
+  const voucherCode = makeVoucherCode()
+  const { error: redErr } = await (createAdminClient() as unknown as Untyped)
+    .from('reward_redemptions')
     .insert({
-      student_id: user.id,
-      type: 'spent',
-      amount: cost,
-      reason: `Purchased: ${itemName}`,
+      id:           redemptionId,
+      school_id:    schoolId,
+      student_id:   user.id,
+      item_id:      item.id,
+      item_name:    item.name,
+      cost:         item.cost,
+      voucher_code: voucherCode,
+      status:       'active',
     })
 
-  if (insertError) {
-    return { success: false, error: insertError.message }
+  if (redErr) {
+    // Compensate: give the tokens back
+    console.error('[purchaseReward] voucher insert failed, refunding:', redErr.message)
+    await grantTokens({
+      studentId:   user.id,
+      schoolId,
+      amount:      item.cost,
+      reason:      `Refund (voucher failed): ${item.name}`,
+      source:      'reward_refund',
+      referenceId: redemptionId,
+    })
+    return { success: false, error: 'Could not issue your voucher. Your tokens were refunded.' }
   }
 
-  const voucherCode = `EDUSPARK-${Math.random().toString(36).substring(2, 7).toUpperCase()}`
-
-  // 3. Log to reward_redemptions table
-  try {
-    await (supabase as any)
-      .from('reward_redemptions')
-      .insert({
-        student_id: user.id,
-        item_name: itemName,
-        cost: cost,
-        voucher_code: voucherCode,
-        status: 'active',
-      })
-  } catch (e) {
-    // Non-blocking fallback
-  }
-
-  // Refresh routes
   revalidatePath('/student/rewards')
   revalidatePath('/student/dashboard')
 
   return {
     success: true,
     voucherCode,
-    remainingBalance: currentBalance - cost,
+    redemptionId,
+    remainingBalance: spend.remainingBalance,
   }
 }
 
@@ -86,7 +110,7 @@ export async function getStudentRewardsData() {
 
   let redemptions: any[] = []
   try {
-    const { data: redData } = await (supabase as any)
+    const { data: redData } = await (supabase as unknown as Untyped)
       .from('reward_redemptions')
       .select('*')
       .eq('student_id', user.id)

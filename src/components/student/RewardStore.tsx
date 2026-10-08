@@ -4,52 +4,7 @@ import { useTransition } from 'react'
 import { Coins, Loader2, Gift } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { purchaseReward } from '@/app/actions/rewards'
-
-interface RewardItem {
-  id: string
-  name: string
-  description: string
-  cost: number
-  icon: string
-}
-
-const STORE_ITEMS: RewardItem[] = [
-  {
-    id: 'avatar-border-gold',
-    name: 'Gold Avatar Border',
-    description: 'Show off your wealth with a shiny gold border around your profile picture.',
-    cost: 50,
-    icon: '✨',
-  },
-  {
-    id: 'extra-hint',
-    name: 'Extra AI Hint',
-    description: 'Unlock one extra detailed hint from the AI Tutor on a difficult assignment.',
-    cost: 20,
-    icon: '💡',
-  },
-  {
-    id: 'late-pass',
-    name: 'Late Homework Pass',
-    description: 'Turn in one assignment up to 24 hours late with no penalty.',
-    cost: 200,
-    icon: '⏳',
-  },
-  {
-    id: 'custom-theme',
-    name: 'Dark Mode Theme',
-    description: 'Unlock the exclusive dark mode theme for your dashboard.',
-    cost: 100,
-    icon: '🌙',
-  },
-  {
-    id: 'pizza-party',
-    name: 'Class Pizza Party Vote',
-    description: 'Contribute to the class pool. If the class reaches 5000 tokens, you get a pizza party!',
-    cost: 500,
-    icon: '🍕',
-  }
-]
+import { REWARD_ITEMS, type RewardItem } from '@/lib/rewards/catalog'
 
 export default function RewardStore({ currentBalance }: { currentBalance: number }) {
   const [isPending, startTransition] = useTransition()
@@ -61,9 +16,9 @@ export default function RewardStore({ currentBalance }: { currentBalance: number
     }
 
     startTransition(async () => {
-      const res = await purchaseReward(item.name, item.cost)
+      const res = await purchaseReward(item.id)
       if (res.success) {
-        toast.success(`Successfully purchased: ${item.name}!`)
+        toast.success(`Successfully purchased: ${item.name}! Voucher: ${res.voucherCode ?? ''}`)
       } else {
         toast.error(res.error || 'Failed to purchase item.')
       }
@@ -88,7 +43,7 @@ export default function RewardStore({ currentBalance }: { currentBalance: number
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {STORE_ITEMS.map((item) => {
+        {REWARD_ITEMS.map((item) => {
           const canAfford = currentBalance >= item.cost
 
           return (

@@ -19,20 +19,10 @@ import {
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 import { purchaseReward, getStudentRewardsData } from '@/app/actions/rewards'
+import { REWARD_ITEMS, type RewardItem } from '@/lib/rewards/catalog'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type RewardCategory = 'all' | 'privilege' | 'gift'
-
-interface RewardItem {
-  id: string
-  name: string
-  description: string
-  cost: number
-  icon: string
-  category: 'privilege' | 'gift'
-  badge?: string
-  stock?: string
-}
 
 interface Redemption {
   id: string
@@ -43,90 +33,7 @@ interface Redemption {
   status?: string
 }
 
-// ── Store Items Data ──────────────────────────────────────────────────────────
-const REWARD_ITEMS: RewardItem[] = [
-  // ── School Privileges ─────────────────────────────────────────
-  {
-    id: 'priv-1',
-    name: '1-Day Homework Extension',
-    description: 'Extend the due date of any single assignment by 24 hours without any XP penalty.',
-    cost: 80,
-    icon: '⏳',
-    category: 'privilege',
-    badge: 'Popular',
-    stock: 'Unlimited',
-  },
-  {
-    id: 'priv-2',
-    name: 'Choose Your Desk for a Week',
-    description: 'Pick your preferred seat in any class for a whole week (subject to teacher approval).',
-    cost: 120,
-    icon: '🪑',
-    category: 'privilege',
-    badge: 'Fun',
-    stock: '5 available this month',
-  },
-  {
-    id: 'priv-3',
-    name: 'Skip One Minor Homework',
-    description: 'Pass on one daily practice or short quiz assignment with full credit granted.',
-    cost: 180,
-    icon: '🎟️',
-    category: 'privilege',
-    badge: 'Hot',
-    stock: '1 per semester',
-  },
-  {
-    id: 'priv-4',
-    name: 'Extra AI Tutor Hint Pack',
-    description: 'Unlock 5 instant step-by-step mathematical breakdowns and solution hints in AI Tutor.',
-    cost: 40,
-    icon: '💡',
-    category: 'privilege',
-    stock: 'Instant unlock',
-  },
-
-  // ── Brand Gifts & Physical Merch ──────────────────────────────
-  {
-    id: 'gift-1',
-    name: 'Cafeteria Snack Voucher',
-    description: 'Get a free fresh pastry, warm sandwich, or healthy juice from the campus cafeteria.',
-    cost: 100,
-    icon: '🥪',
-    category: 'gift',
-    badge: 'Tasty',
-    stock: 'Digital QR Code',
-  },
-  {
-    id: 'gift-2',
-    name: '$10 Bookshop Voucher',
-    description: 'Receive a digital gift card redeemable at the school bookstore or partner stationery shop.',
-    cost: 220,
-    icon: '📚',
-    category: 'gift',
-    badge: 'Best Value',
-    stock: 'Digital gift card',
-  },
-  {
-    id: 'gift-3',
-    name: 'EduSpark School Hoodie',
-    description: 'Premium heavyweight cotton hoodie with custom school badge and embroidered logo.',
-    cost: 380,
-    icon: '🧥',
-    category: 'gift',
-    badge: 'Exclusive',
-    stock: 'Physical item (pickup at office)',
-  },
-  {
-    id: 'gift-4',
-    name: 'Stainless Steel Water Bottle',
-    description: 'Eco-friendly insulated water bottle engraved with your student name and school crest.',
-    cost: 160,
-    icon: '💧',
-    category: 'gift',
-    stock: 'Physical item',
-  },
-]
+// Store items live in @/lib/rewards/catalog — prices are enforced server-side.
 
 export default function RewardsPage() {
   const [balance, setBalance] = useState<number>(0)
@@ -172,21 +79,19 @@ export default function RewardsPage() {
     if (!selectedItem || balance < selectedItem.cost) return
 
     startTransition(async () => {
-      const res = await purchaseReward(selectedItem.name, selectedItem.cost)
+      // Only the item id is sent — the server looks up the price.
+      const res = await purchaseReward(selectedItem.id)
 
-      if (res.success) {
-        const voucherCode = res.voucherCode || `EDUSPARK-${Math.random().toString(36).substring(2, 7).toUpperCase()}`
-        
-        // Deduct balance locally & log redemption
+      if (res.success && res.voucherCode) {
+        const voucherCode = res.voucherCode
+
         if (res.remainingBalance !== undefined) {
           setBalance(res.remainingBalance)
-        } else {
-          setBalance((prev) => prev - selectedItem.cost)
         }
 
         setRedemptions((prev) => [
           {
-            id: Date.now().toString(),
+            id: res.redemptionId ?? voucherCode,
             itemName: selectedItem.name,
             cost: selectedItem.cost,
             redeemedAt: new Date().toISOString(),

@@ -3,6 +3,7 @@ import { generateText } from 'ai'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/utils/supabase/server'
+import { grantTokensBatch } from '@/lib/tokens/ledger'
 import type { AcceptResult, QualityTier } from '@/types/forum'
 
 export const maxDuration = 30
@@ -149,39 +150,41 @@ REASON: <one sentence>
     }
   }
 
-  // 7. Payouts (service role: student RLS can't credit another student)
-  const ledger: Array<Record<string, unknown>> = []
+  // 7. Payouts (server-only ledger with source tracking and idempotency)
+  const entries = []
 
   if (tokensAwarded > 0) {
-    ledger.push({
-      school_id:    question.school_id,
-      student_id:   answer.author_id,                  // ← the ANSWER AUTHOR
-      type:         'earned',
+    entries.push({
+      schoolId:    question.school_id,
+      studentId:   answer.author_id,                  // ← the ANSWER AUTHOR
+      type:         'earned' as const,
       amount:       tokensAwarded,
       reason:       `Forum answer accepted: "${String(question.title).slice(0, 60)}"${
         aiRationale ? ` — AI: ${aiRationale.slice(0, 80)}` : ''
       }`,
-      reference_id: questionId,
+      source:       'forum_answer' as const,
+      referenceId:  questionId,
     })
   }
 
   // Unawarded part of an escrowed bounty goes back to the asker
   const refunded = question.bounty_escrowed ? bounty - tokensAwarded : 0
   if (refunded > 0) {
-    ledger.push({
-      school_id:    question.school_id,
-      student_id:   user.id,
-      type:         'earned',
+    entries.push({
+      schoolId:    question.school_id,
+      studentId:   user.id,
+      type:         'earned' as const,
       amount:       refunded,
       reason:       `Forum bounty refund (AI-graded ${qualityTier}): "${String(question.title).slice(0, 60)}"`,
-      reference_id: questionId,
+      source:       'forum_refund' as const,
+      referenceId:  questionId,
     })
   }
 
-  if (ledger.length > 0) {
-    const { error: tokenErr } = await db.from('tokens').insert(ledger)
-    if (tokenErr) {
-      console.error('[accept-answer] Token payout failed:', tokenErr.message)
+  if (entries.length > 0) {
+    const grant = await grantTokensBatch(entries)
+    if (!grant.ok) {
+      console.error('[accept-answer] Token payout failed:', grant.error)
       return json(
         {
           success: true,

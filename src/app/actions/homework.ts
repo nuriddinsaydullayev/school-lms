@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient, createAdminClient } from '@/utils/supabase/server'
+import { grantTokens, getSchoolId } from '@/lib/tokens/ledger'
 
 // ── Types ─────────────────────────────────────────────────────
 export interface ActionResult {
@@ -65,41 +66,32 @@ export async function submitAssignment(
     return { success: false, error: submitError?.message ?? 'Submission failed.' }
   }
 
-  // ── Award tokens & XP using the admin client (bypasses RLS) ──
-  // Only award on first submission (existing was null or 'pending')
-  if (!existing) {
-    const { data: assignment } = await supabase
-      .from('assignments')
-      .select('token_reward, xp_reward, title')
-      .eq('id', assignmentId)
-      .single()
+  // ── Award tokens & XP (server-only ledger, idempotent per assignment) ──
+  // The unique (student_id, source, reference_id) index guarantees one payout
+  // per assignment even under double-clicks or concurrent requests.
+  const { data: assignment } = await supabase
+    .from('assignments')
+    .select('token_reward, xp_reward, title')
+    .eq('id', assignmentId)
+    .maybeSingle()
 
-    if (assignment) {
+  if (assignment && assignment.token_reward > 0) {
+    const schoolId = await getSchoolId(user.id)
+    const grant = await grantTokens({
+      studentId:   user.id,
+      schoolId,
+      amount:      assignment.token_reward,
+      reason:      `Submitted: ${assignment.title}`,
+      source:      'homework',
+      referenceId: assignmentId,
+    })
+
+    // Only add XP on a brand-new payout
+    if (grant.ok && !grant.duplicate && assignment.xp_reward > 0) {
       const admin = createAdminClient()
-
-      // Insert token reward into ledger
-      await admin.from('tokens').insert({
-        student_id:   user.id,
-        type:         'earned',
-        amount:       assignment.token_reward,
-        reason:       `Submitted: ${assignment.title}`,
-        reference_id: assignmentId,
-      })
-
-      // Increment XP on the student's profile
-      await admin
-        .from('profiles')
-        .update({
-          xp_points: supabase // we call rpc via admin so RLS is bypassed
-            ? undefined       // placeholder — actual update below
-            : 0,
-        })
-        .eq('id', user.id)
-
-      // Fetch current XP then update (Supabase JS v2 has no rpc increment shorthand)
       const { data: profile } = await admin
         .from('profiles')
-        .select('xp_points, level')
+        .select('xp_points')
         .eq('id', user.id)
         .single()
 
