@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Users,
   BookOpen,
+  Calendar,
   Settings,
   LogOut,
   Sparkles,
@@ -25,6 +26,7 @@ const navItems = [
   { name: 'Dashboard', href: '/teacher/dashboard', icon: LayoutDashboard },
   { name: 'My Classes', href: '/teacher/classes', icon: Users },
   { name: 'Assignments', href: '/teacher/assignments', icon: BookOpen },
+  { name: 'Schedule', href: '/teacher/schedule', icon: Calendar },
   { name: 'Settings', href: '/teacher/settings', icon: Settings },
 ]
 

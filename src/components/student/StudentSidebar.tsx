@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { href: '/student/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
   { href: '/student/classes',     label: 'My Classes',  icon: BookOpen        },
   { href: '/student/assignments', label: 'Assignments', icon: ClipboardList   },
+  { href: '/student/schedule',    label: 'Timetable',   icon: CalendarDays    },
   { href: '/student/planner',     label: 'Planner',     icon: CalendarDays    },
   { href: '/student/forum',       label: 'Forum',       icon: MessageCircle   },
   { href: '/student/ai-tutor',    label: 'AI Tutor',    icon: Brain           },

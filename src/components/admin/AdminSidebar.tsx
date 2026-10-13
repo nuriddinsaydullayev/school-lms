@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Users,
   BookOpen,
+  Calendar,
   LogOut,
   ShieldAlert,
   Building2,
@@ -22,6 +23,7 @@ interface AdminSidebarProps {
 const navItems = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
   { name: 'Classes', href: '/admin/classes', icon: BookOpen },
+  { name: 'Schedules', href: '/admin/schedules', icon: Calendar },
   { name: 'Users & Roles', href: '/admin/users', icon: Users },
 ]
 

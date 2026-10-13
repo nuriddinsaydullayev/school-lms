@@ -300,7 +300,47 @@ export interface Database {
           response?:      string
           model?:         string
           tokens_used?:   number | null
-          created_at?:    string
+        }
+        Relationships: []
+      }
+
+      // ── class_schedules ──────────────────────────────────────
+      class_schedules: {
+        Row: {
+          id:          string
+          school_id:   string | null
+          class_id:    string
+          subject:     string
+          day_of_week: number
+          start_time:  string
+          end_time:    string
+          room_number: string | null
+          created_at:  string
+          updated_at:  string
+        }
+        Insert: {
+          id?:          string
+          school_id?:   string | null
+          class_id:     string
+          subject:      string
+          day_of_week:  number
+          start_time:   string
+          end_time:     string
+          room_number?: string | null
+          created_at?:  string
+          updated_at?:  string
+        }
+        Update: {
+          id?:          string
+          school_id?:   string | null
+          class_id?:    string
+          subject?:     string
+          day_of_week?: number
+          start_time?:  string
+          end_time?:    string
+          room_number?: string | null
+          created_at?:  string
+          updated_at?:  string
         }
         Relationships: []
       }
