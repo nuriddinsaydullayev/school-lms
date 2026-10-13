@@ -78,7 +78,7 @@ export default function AiScheduleModal({
               </div>
               <div>
                 <h3 className="font-bold text-lg text-white">AI Auto-Schedule Generator</h3>
-                <p className="text-xs text-amber-100/90">Powered by Google Gemini 2.5 Flash</p>
+                <p className="text-xs text-amber-100/90">Powered by Google Gemini 3.8 Flash</p>
               </div>
             </div>
 

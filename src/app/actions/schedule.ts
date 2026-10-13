@@ -257,7 +257,7 @@ Each object in the array must strictly have these fields:
     const { generateText } = await import('ai')
 
     const { text } = await generateText({
-      model: google('gemini-2.5-flash'),
+      model: google('gemini-3.8-flash'),
       prompt,
       temperature: 0.3,
     })
