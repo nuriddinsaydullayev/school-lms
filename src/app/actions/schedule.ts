@@ -8,6 +8,15 @@ export interface ScheduleActionResult {
   error?: string
 }
 
+export interface AiScheduleGenerationParams {
+  school_start_time?: string
+  period_duration_minutes?: number
+  break_duration_minutes?: number
+  max_periods_per_day?: number
+  curriculum_workload?: string
+  additional_constraints?: string
+}
+
 /**
  * Verify current user has admin role and return user and school_id
  */
@@ -33,6 +42,42 @@ async function verifyAdmin() {
   }
 
   return { user, profile }
+}
+
+/**
+ * Helper to compute exact time slots for school days
+ */
+function computeTimeSlots(
+  startTimeStr: string,
+  periodMinutes: number,
+  breakMinutes: number,
+  maxPeriods: number
+): { slot_index: number; start_time: string; end_time: string }[] {
+  const [startH, startM] = (startTimeStr || '08:00').split(':').map((v) => parseInt(v, 10))
+  let currentMinutes = (isNaN(startH) ? 8 : startH) * 60 + (isNaN(startM) ? 0 : startM)
+
+  const slots = []
+  for (let i = 1; i <= maxPeriods; i++) {
+    const endMinutes = currentMinutes + periodMinutes
+
+    const formatMins = (m: number) => {
+      const hh = Math.floor(m / 60)
+        .toString()
+        .padStart(2, '0')
+      const mm = (m % 60).toString().padStart(2, '0')
+      return `${hh}:${mm}`
+    }
+
+    slots.push({
+      slot_index: i,
+      start_time: formatMins(currentMinutes),
+      end_time: formatMins(endMinutes),
+    })
+
+    currentMinutes = endMinutes + breakMinutes
+  }
+
+  return slots
 }
 
 /**
@@ -164,8 +209,11 @@ export async function deleteScheduleEntry(scheduleId: string): Promise<ScheduleA
 
 /**
  * AI-powered Auto-Schedule Generator using Gemini API
+ * Enhanced with pre-computed time slots, dense workload distribution, and strict JSON output
  */
-export async function generateScheduleWithAI(constraints?: string): Promise<{
+export async function generateScheduleWithAI(
+  params?: AiScheduleGenerationParams | string
+): Promise<{
   success: boolean
   count?: number
   error?: string
@@ -178,7 +226,23 @@ export async function generateScheduleWithAI(constraints?: string): Promise<{
   const { profile } = auth
   const adminClient = createAdminClient()
 
-  // 1. Fetch all classes and their assigned teachers in this school
+  // Extract structured parameters with sensible defaults
+  const options: AiScheduleGenerationParams =
+    typeof params === 'string'
+      ? { additional_constraints: params }
+      : params || {}
+
+  const startTime = options.school_start_time || '08:00'
+  const periodDuration = Number(options.period_duration_minutes) || 45
+  const breakDuration = Number(options.break_duration_minutes) || 5
+  const maxPeriods = Math.min(Math.max(Number(options.max_periods_per_day) || 6, 1), 9)
+  const curriculumWorkload = options.curriculum_workload?.trim() || ''
+  const additionalConstraints = options.additional_constraints?.trim() || ''
+
+  // 1. Pre-compute discrete daily time blocks
+  const timeSlots = computeTimeSlots(startTime, periodDuration, breakDuration, maxPeriods)
+
+  // 2. Fetch all classes with assigned teachers
   const { data: classes, error: classesErr } = await adminClient
     .from('classes')
     .select(`
@@ -198,14 +262,13 @@ export async function generateScheduleWithAI(constraints?: string): Promise<{
     }
   }
 
-  // 2. Fetch all teachers in this school
+  // 3. Fetch all teachers in this school
   const { data: teachers } = await adminClient
     .from('profiles')
     .select('id, full_name')
     .eq('school_id', profile.school_id)
     .in('role', ['teacher', 'admin'])
 
-  // Format classes & teachers info for prompt
   const classesInfo = classes.map((c: any) => {
     const teacher = Array.isArray(c.teacher) ? c.teacher[0] : c.teacher
     return {
@@ -217,40 +280,52 @@ export async function generateScheduleWithAI(constraints?: string): Promise<{
     }
   })
 
-  // 3. Construct Gemini Prompt
-  const prompt = `You are an expert school timetable and master schedule coordinator.
-Your task is to generate a well-balanced, realistic weekly class timetable for a school.
+  // 4. Construct high-density Master Timetable Prompt
+  const prompt = `You are an elite, highly precise school master timetable and constraint-satisfaction scheduling engine.
+Your mission is to generate a comprehensive, dense, fully-packed weekly timetable (Monday=1 through Friday=5) for every class.
 
-AVAILABLE CLASSES TO SCHEDULE:
+PRE-COMPUTED DAILY TIME SLOTS (Every school day Monday to Friday has exactly these ${timeSlots.length} periods):
+${JSON.stringify(timeSlots, null, 2)}
+
+CLASSES TO SCHEDULE:
 ${JSON.stringify(classesInfo, null, 2)}
 
-AVAILABLE TEACHERS:
+TEACHERS:
 ${JSON.stringify(teachers ?? [], null, 2)}
 
-ADMIN CONSTRAINTS & PREFERENCES:
-${constraints?.trim() ? constraints.trim() : 'Standard balanced weekly schedule across school days.'}
+CURRICULUM WORKLOAD (Weekly periods per subject/class):
+${curriculumWorkload || 'Standard full academic schedule. Ensure every class has an active period in every time slot Monday through Friday.'}
 
-TIMETABLE RULES:
-1. Days of week must be integers from 1 to 5 (1 = Monday, 2 = Tuesday, 3 = Wednesday, 4 = Thursday, 5 = Friday). (Do NOT schedule on Saturday 6 or Sunday unless explicitly requested in constraints).
-2. Daily school hours are typically between 08:30 and 15:30. Periods should be between 45 and 60 minutes (e.g. "09:00" to "09:50", "10:00" to "10:50", "11:00" to "11:50", "13:00" to "13:50", "14:00" to "14:50").
-3. Standard lunch break is between 12:00 and 13:00. Avoid scheduling during this period.
-4. "start_time" and "end_time" must be in 24-hour "HH:MM" format (e.g., "09:00", "10:45"). start_time must strictly be before end_time.
-5. Avoid scheduling teacher or class conflicts (a teacher or class cannot be in two places at the same time).
-6. "class_id" must be an EXACT UUID matching one of the class_id values provided in the AVAILABLE CLASSES list above.
-7. Assign realistic room numbers if possible (e.g., "Room 101", "Lab A", "Auditorium", "Room 204").
-8. Generate between 3 to 5 timetable periods per class spread throughout the week.
+ADDITIONAL CONSTRAINTS:
+${additionalConstraints || 'None.'}
 
-OUTPUT INSTRUCTION:
-Return ONLY a valid JSON array of objects. Do not include markdown code block formatting (or wrap inside \`\`\`json ... \`\`\`), no extra text or explanations.
-Each object in the array must strictly have these fields:
-{
-  "class_id": string (UUID),
-  "subject": string,
-  "day_of_week": number (1-5),
-  "start_time": string ("HH:MM"),
-  "end_time": string ("HH:MM"),
-  "room_number": string
-}`
+MANDATORY SCHEDULING RULES:
+1. FULL TIME-SLOT DENSITY:
+   - For every class in the list, schedule a meaningful academic subject period for each of the ${timeSlots.length} daily time slots across Monday (1), Tuesday (2), Wednesday (3), Thursday (4), and Friday (5).
+   - Use the exact "start_time" and "end_time" strings from the PRE-COMPUTED DAILY TIME SLOTS list (e.g. "${timeSlots[0]?.start_time}" to "${timeSlots[0]?.end_time}"). Do not invent random timestamps.
+2. NO TEACHER CONFLICTS:
+   - A teacher CANNOT be scheduled to teach two different classes at the same day_of_week and start_time.
+3. NO CLASS CONFLICTS:
+   - A class cannot have two subjects at the same day_of_week and start_time.
+4. VALID IDENTIFIERS:
+   - "class_id" MUST strictly be one of the exact UUID strings from the CLASSES list.
+   - "day_of_week" must be an integer from 1 to 5 (1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri).
+5. REALISTIC ROOMS:
+   - Assign reasonable classroom numbers (e.g. "Room 101", "Room 202", "Lab 1", "Hall B").
+
+OUTPUT FORMAT:
+Return a valid JSON array of objects adhering strictly to this schema:
+[
+  {
+    "class_id": "UUID",
+    "subject": "Subject Name",
+    "day_of_week": 1,
+    "start_time": "HH:MM",
+    "end_time": "HH:MM",
+    "room_number": "Room 101"
+  }
+]
+Do not output markdown explanations or prose.`
 
   try {
     const { google } = await import('@ai-sdk/google')
@@ -259,10 +334,10 @@ Each object in the array must strictly have these fields:
     const { text } = await generateText({
       model: google('gemini-3.8-flash'),
       prompt,
-      temperature: 0.3,
+      temperature: 0.2,
     })
 
-    // Parse the JSON array from response
+    // Parse and clean JSON
     let cleanJson = text.trim()
     if (cleanJson.startsWith('```json')) {
       cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/\s*```$/i, '')
@@ -273,7 +348,7 @@ Each object in the array must strictly have these fields:
     const parsedEntries = JSON.parse(cleanJson)
 
     if (!Array.isArray(parsedEntries) || parsedEntries.length === 0) {
-      return { success: false, error: 'AI did not return any schedule slots. Please try again.' }
+      return { success: false, error: 'AI did not return any timetable slots. Please try again.' }
     }
 
     // Validate and sanitize records
@@ -307,11 +382,11 @@ Each object in the array must strictly have these fields:
     if (recordsToInsert.length === 0) {
       return {
         success: false,
-        error: 'No valid schedule records could be constructed from AI response.',
+        error: 'No valid timetable entries matched the school classes.',
       }
     }
 
-    // 4. Bulk insert into class_schedules
+    // Bulk insert into class_schedules
     const { error: insertErr } = await adminClient
       .from('class_schedules')
       .insert(recordsToInsert)
@@ -331,8 +406,7 @@ Each object in the array must strictly have these fields:
   } catch (err: any) {
     return {
       success: false,
-      error: err.message || 'An error occurred while generating schedule with Gemini AI.',
+      error: err.message || 'An error occurred while generating timetable with Gemini AI.',
     }
   }
 }
-
