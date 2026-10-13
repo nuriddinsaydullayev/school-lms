@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import {
   Calendar,
   Plus,
@@ -11,10 +11,12 @@ import {
   Loader2,
   Building2,
   Filter,
+  Sparkles,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createScheduleEntry, deleteScheduleEntry } from '@/app/actions/schedule'
 import { ScheduleEntry, DAYS_OF_WEEK, formatTime } from '@/types/schedule'
+import AiScheduleModal from './AiScheduleModal'
 
 interface ClassOption {
   id: string
@@ -35,6 +37,12 @@ export default function AdminScheduleManager({
   initialSchedules,
 }: AdminScheduleManagerProps) {
   const [schedules, setSchedules] = useState<ScheduleEntry[]>(initialSchedules)
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false)
+
+  useEffect(() => {
+    setSchedules(initialSchedules)
+  }, [initialSchedules])
+
   const [selectedClassId, setSelectedClassId] = useState<string>(
     classes[0]?.id || ''
   )
@@ -273,26 +281,46 @@ export default function AdminScheduleManager({
 
       {/* ── Right Column: Timetable Grid & Entries ── */}
       <div className="lg:col-span-7 space-y-6">
-        {/* Filter bar */}
+        {/* Filter & AI Generator Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-            <Filter size={16} className="text-amber-600" />
-            <span>Filter Class:</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <Filter size={16} className="text-amber-600" />
+              <span>Filter:</span>
+            </div>
+
+            <select
+              value={filterClassId}
+              onChange={(e) => setFilterClassId(e.target.value)}
+              className="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
+            >
+              <option value="all">All Classes ({schedules.length} slots)</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <select
-            value={filterClassId}
-            onChange={(e) => setFilterClassId(e.target.value)}
-            className="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
+          {/* Glowing AI Auto-Schedule Button */}
+          <button
+            type="button"
+            onClick={() => setIsAiModalOpen(true)}
+            className="relative group inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white font-semibold text-xs sm:text-sm shadow-md shadow-amber-500/25 hover:shadow-lg hover:shadow-amber-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
-            <option value="all">All Classes ({schedules.length} slots)</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            <span className="absolute -inset-0.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 opacity-0 group-hover:opacity-40 blur-xs transition duration-200" />
+            <Sparkles className="w-4 h-4 animate-pulse relative z-10 text-amber-100" />
+            <span className="relative z-10">✨ AI Auto-Schedule</span>
+          </button>
         </div>
+
+        {/* AI Schedule Modal */}
+        <AiScheduleModal
+          isOpen={isAiModalOpen}
+          onClose={() => setIsAiModalOpen(false)}
+          classesCount={classes.length}
+        />
 
         {/* Weekly Day Cards */}
         <div className="space-y-4">
