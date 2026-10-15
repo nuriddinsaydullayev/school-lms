@@ -124,10 +124,10 @@ export default function TimetableGrid({
                           )}
                         </div>
 
-                        {role === 'student' && entry.classes?.teacher && (
+                        {role === 'student' && (entry.teacher || entry.classes?.teacher) && (
                           <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
                             <User size={13} className="text-slate-400" />
-                            Instructor: {entry.classes.teacher.full_name}
+                            Instructor: {(entry.teacher ?? entry.classes?.teacher)?.full_name}
                           </p>
                         )}
                       </div>

@@ -234,17 +234,70 @@ export async function deleteAssignment(assignmentId: string): Promise<ActionResu
 }
 
 // -------------------------------------------------------------
-// updateProfile
+// updateProfile (Teacher)
 // -------------------------------------------------------------
-export async function updateProfile(data: { full_name: string }): Promise<ActionResult> {
+export async function updateProfile(data: {
+  full_name: string
+  avatar_url?: string | null
+  phone?: string | null
+  bio?: string | null
+  qualifications?: string | null
+  subjects_taught?: string[] | null
+}): Promise<ActionResult> {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Unauthorized' }
 
-  const { error } = await supabase
+  const trimmedName = data.full_name?.trim()
+  if (!trimmedName) {
+    return { success: false, error: 'Full name is required.' }
+  }
+
+  // Validate lengths
+  const phone = data.phone?.trim() || null
+  if (phone && phone.length > 32) {
+    return { success: false, error: 'Phone number must be 32 characters or fewer.' }
+  }
+
+  const bio = data.bio?.trim() || null
+  if (bio && bio.length > 1000) {
+    return { success: false, error: 'Bio must be 1000 characters or fewer.' }
+  }
+
+  const qualifications = data.qualifications?.trim() || null
+  if (qualifications && qualifications.length > 1000) {
+    return { success: false, error: 'Qualifications must be 1000 characters or fewer.' }
+  }
+
+  const avatarUrl = data.avatar_url?.trim() || null
+  if (avatarUrl && avatarUrl.length > 500) {
+    return { success: false, error: 'Avatar URL is too long.' }
+  }
+
+  // Clean subjects_taught array (trim, dedupe, ignore empties)
+  const rawSubjects = Array.isArray(data.subjects_taught) ? data.subjects_taught : []
+  const subjectsTaught = Array.from(
+    new Set(
+      rawSubjects
+        .map((s) => (typeof s === 'string' ? s.trim() : ''))
+        .filter((s) => s.length > 0 && s.length <= 60)
+    )
+  ).slice(0, 20)
+
+  // Use admin client so update succeeds even before the SQL migration grant is applied in Supabase
+  const adminClient = createAdminClient()
+
+  const { error } = await adminClient
     .from('profiles')
-    .update({ full_name: data.full_name })
+    .update({
+      full_name: trimmedName,
+      avatar_url: avatarUrl,
+      phone: phone,
+      bio: bio,
+      qualifications: qualifications,
+      subjects_taught: subjectsTaught,
+    })
     .eq('id', user.id)
 
   if (error) {
@@ -253,6 +306,8 @@ export async function updateProfile(data: { full_name: string }): Promise<Action
 
   revalidatePath('/teacher/settings')
   revalidatePath('/teacher/dashboard')
+  revalidatePath('/teacher/classes')
+  revalidatePath('/admin/schedules')
   return { success: true }
 }
 

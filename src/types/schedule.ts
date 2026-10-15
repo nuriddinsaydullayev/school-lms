@@ -1,7 +1,16 @@
+export interface ScheduleTeacher {
+  id: string
+  full_name: string
+  avatar_url?: string | null
+}
+
 export interface ScheduleEntry {
   id: string
   school_id: string | null
   class_id: string
+  /** Instructor for this specific period (may differ from the class owner). */
+  teacher_id?: string | null
+  teacher?: ScheduleTeacher | null
   subject: string
   day_of_week: number // 1: Monday, ..., 6: Saturday
   start_time: string  // "HH:MM:SS" or "HH:MM"
@@ -10,11 +19,7 @@ export interface ScheduleEntry {
   classes?: {
     id: string
     name: string
-    teacher?: {
-      id: string
-      full_name: string
-      avatar_url: string | null
-    } | null
+    teacher?: ScheduleTeacher | null
   } | null
 }
 

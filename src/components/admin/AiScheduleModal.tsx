@@ -51,6 +51,7 @@ export default function AiScheduleModal({
     'Math: 5, Science: 4, English: 4, Social Studies: 3, PE: 2, Art: 2'
   )
   const [additionalConstraints, setAdditionalConstraints] = useState('')
+  const [replaceExisting, setReplaceExisting] = useState(true)
 
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -78,11 +79,12 @@ export default function AiScheduleModal({
         max_periods_per_day: maxPeriodsPerDay,
         curriculum_workload: curriculumWorkload.trim(),
         additional_constraints: additionalConstraints.trim(),
+        replace_existing: replaceExisting,
       })
 
       if (res.success) {
         toast.success(
-          `✨ Timetable generated! Successfully scheduled ${res.count || 0} dense periods across Monday–Friday.`,
+          `✨ Timetable generated! Scheduled ${res.count || 0} periods with conflict-free instructors.`,
           { duration: 5000 }
         )
         router.refresh()
@@ -286,6 +288,21 @@ export default function AiScheduleModal({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Section 4: Replace or Merge */}
+          <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-amber-50/60 border border-amber-100 text-xs text-amber-900">
+            <input
+              type="checkbox"
+              id="replace_existing"
+              checked={replaceExisting}
+              disabled={isPending}
+              onChange={(e) => setReplaceExisting(e.target.checked)}
+              className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+            />
+            <label htmlFor="replace_existing" className="cursor-pointer select-none">
+              <span className="font-semibold">Replace existing timetable</span> — clears previously scheduled periods for this school so the newly generated schedule starts fresh without overlaps.
+            </label>
           </div>
 
           {/* Bottom Actions */}

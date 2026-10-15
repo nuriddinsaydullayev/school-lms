@@ -28,6 +28,11 @@ export default async function StudentSchedulePage() {
       .from('class_schedules')
       .select(`
         *,
+        teacher:profiles!class_schedules_teacher_id_fkey (
+          id,
+          full_name,
+          avatar_url
+        ),
         classes (
           id,
           name,
@@ -42,15 +47,17 @@ export default async function StudentSchedulePage() {
       .order('day_of_week', { ascending: true })
       .order('start_time', { ascending: true })
 
+    const one = <T,>(v: T | T[] | null | undefined): T | null =>
+      Array.isArray(v) ? v[0] ?? null : v ?? null
+
     schedules = (schedulesData ?? []).map((s: any) => ({
       ...s,
+      teacher: one(s.teacher),
       classes: s.classes
         ? {
             id: s.classes.id,
             name: s.classes.name,
-            teacher: Array.isArray(s.classes.teacher)
-              ? s.classes.teacher[0]
-              : s.classes.teacher,
+            teacher: one(s.classes.teacher),
           }
         : null,
     })) as ScheduleEntry[]

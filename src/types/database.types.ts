@@ -39,6 +39,9 @@ export interface Database {
           full_name:   string
           avatar_url:  string | null
           bio:         string | null
+          phone:           string | null
+          qualifications:  string | null
+          subjects_taught: string[]
           xp_points:   number
           level:       number
           created_at:  string
@@ -50,6 +53,9 @@ export interface Database {
           full_name:   string
           avatar_url?: string | null
           bio?:        string | null
+          phone?:           string | null
+          qualifications?:  string | null
+          subjects_taught?: string[]
           xp_points?:  number
           level?:      number
           created_at?: string
@@ -61,6 +67,9 @@ export interface Database {
           full_name?:  string
           avatar_url?: string | null
           bio?:        string | null
+          phone?:           string | null
+          qualifications?:  string | null
+          subjects_taught?: string[]
           xp_points?:  number
           level?:      number
           created_at?: string
@@ -300,6 +309,7 @@ export interface Database {
           response?:      string
           model?:         string
           tokens_used?:   number | null
+          created_at?:    string
         }
         Relationships: []
       }
@@ -310,6 +320,7 @@ export interface Database {
           id:          string
           school_id:   string | null
           class_id:    string
+          teacher_id:  string | null
           subject:     string
           day_of_week: number
           start_time:  string
@@ -322,6 +333,7 @@ export interface Database {
           id?:          string
           school_id?:   string | null
           class_id:     string
+          teacher_id?:  string | null
           subject:      string
           day_of_week:  number
           start_time:   string
@@ -334,6 +346,7 @@ export interface Database {
           id?:          string
           school_id?:   string | null
           class_id?:    string
+          teacher_id?:  string | null
           subject?:     string
           day_of_week?: number
           start_time?:  string
